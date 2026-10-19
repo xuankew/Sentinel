@@ -310,14 +310,19 @@ pub fn delete_item(app: AppHandle, state: State<'_, AppState>, id: String) -> Re
 // ---------- 剪贴板（敏感字段复制后自动清除） ----------
 
 /// 复制敏感值到剪贴板；`clear_after` 秒后若剪贴板仍是该值则自动清除。
+/// 未指定 `clear_after` 时用设置里的剪贴板清除时间。返回实际采用的秒数（0=不清除）。
 #[tauri::command]
 pub async fn copy_secret(
     app: AppHandle,
     value: String,
     clear_after: Option<u64>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     app.clipboard().write_text(&value).map_err(|e| e.to_string())?;
-    let secs = clear_after.unwrap_or(DEFAULT_CLIPBOARD_CLEAR_SECS);
+    let secs = clear_after.unwrap_or_else(|| {
+        load_settings(&app)
+            .map(|s| s.clipboard_clear_secs as u64)
+            .unwrap_or(DEFAULT_CLIPBOARD_CLEAR_SECS)
+    });
     if secs > 0 {
         let app2 = app.clone();
         let expected = value.clone();
@@ -332,7 +337,7 @@ pub async fn copy_secret(
             }
         });
     }
-    Ok(())
+    Ok(secs)
 }
 
 // ---------- TOTP ----------
@@ -681,7 +686,11 @@ pub fn set_recovery_hint(
 /// 读取偏好设置；文件不存在或损坏时返回默认值（不阻断启动）。
 #[tauri::command]
 pub fn get_settings(app: AppHandle) -> Result<Settings, String> {
-    let p = settings_path(&app)?;
+    load_settings(&app)
+}
+
+fn load_settings(app: &AppHandle) -> Result<Settings, String> {
+    let p = settings_path(app)?;
     if !p.exists() {
         return Ok(Settings::default());
     }

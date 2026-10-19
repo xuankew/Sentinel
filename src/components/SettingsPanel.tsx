@@ -24,6 +24,7 @@ const DENSITIES: { key: Density; label: string }[] = [
 ];
 
 const LOCK_OPTIONS = [0, 1, 5, 15, 30, 60];
+const CLIPBOARD_OPTIONS = [15, 30, 60, 0];
 
 export default function SettingsPanel(props: Props) {
   const [settings, setSettings] = createSignal<Settings | null>(null);
@@ -282,6 +283,25 @@ export default function SettingsPanel(props: Props) {
                       )}
                     </For>
                   </div>
+                </div>
+
+                {/* 剪贴板自动清除 */}
+                <div class="form-group">
+                  <label>剪贴板自动清除（复制敏感字段后）</label>
+                  <div class="seg-row">
+                    <For each={CLIPBOARD_OPTIONS}>
+                      {(sec) => (
+                        <button
+                          class="seg-btn"
+                          classList={{ active: s().clipboard_clear_secs === sec }}
+                          onClick={() => patch({ clipboard_clear_secs: sec })}
+                        >
+                          {sec === 0 ? "从不" : `${sec} 秒`}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                  <div class="form-sub">选「从不」将不再自动清除剪贴板，敏感内容可能被其他程序读取</div>
                 </div>
 
                 {/* Touch ID */}

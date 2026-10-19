@@ -208,8 +208,10 @@ export default function Vault(props: Props) {
       const sec = primarySecret(selected());
       if (!sec) return;
       e.preventDefault();
-      await api.copySecret(sec.value);
-      showToast(`已复制${sec.label}，30 秒后自动清除`);
+      const secs = await api.copySecret(sec.value);
+      showToast(
+        secs > 0 ? `已复制${sec.label}，${secs} 秒后自动清除` : `已复制${sec.label}（按设置不自动清除）`
+      );
     }
   }
 

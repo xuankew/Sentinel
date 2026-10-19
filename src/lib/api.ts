@@ -76,6 +76,8 @@ export type Density = "comfortable" | "compact";
 export interface Settings {
   /** 无操作多少分钟后自动锁定；0=永不 */
   auto_lock_minutes: number;
+  /** 复制敏感字段后多少秒自动清除剪贴板；0=从不 */
+  clipboard_clear_secs: number;
   accent: Accent;
   density: Density;
   touch_id_enabled: boolean;
@@ -97,7 +99,7 @@ export const api = {
   deleteItem: (id: string) => invoke<void>("delete_item", { id }),
 
   copySecret: (value: string, clearAfter?: number) =>
-    invoke<void>("copy_secret", { value, clearAfter }),
+    invoke<number>("copy_secret", { value, clearAfter }),
   generateTotp: (secret: string) => invoke<TotpResult>("generate_totp", { secret }),
 
   getSyncConfig: () => invoke<SyncConfigView>("get_sync_config"),

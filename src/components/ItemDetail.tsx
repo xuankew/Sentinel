@@ -29,9 +29,11 @@ function SecretField(props: { label: string; value: string; onToast: (m: string)
   const [copied, setCopied] = createSignal(false);
 
   async function copy() {
-    await api.copySecret(props.value);
+    const secs = await api.copySecret(props.value);
     setCopied(true);
-    props.onToast(`已复制${props.label}，30 秒后自动清除`);
+    props.onToast(
+      secs > 0 ? `已复制${props.label}，${secs} 秒后自动清除` : `已复制${props.label}（按设置不自动清除）`
+    );
     setTimeout(() => setCopied(false), 1500);
   }
 
@@ -89,9 +91,9 @@ function TotpField(props: { secret: string; onToast: (m: string) => void }) {
   async function copy() {
     const code = res()?.code;
     if (!code) return;
-    await api.copySecret(code);
+    const secs = await api.copySecret(code);
     setCopied(true);
-    props.onToast("已复制验证码，30 秒后自动清除");
+    props.onToast(secs > 0 ? `已复制验证码，${secs} 秒后自动清除` : "已复制验证码（按设置不自动清除）");
     setTimeout(() => setCopied(false), 1500);
   }
 

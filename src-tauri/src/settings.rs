@@ -6,9 +6,14 @@ use serde::{Deserialize, Serialize};
 pub const ACCENTS: &[&str] = &["teal", "blue", "violet", "amber", "rose", "green"];
 /// 密度预设 key。
 pub const DENSITIES: &[&str] = &["comfortable", "compact"];
+/// 剪贴板自动清除秒数白名单；0 表示从不自动清除。
+pub const CLIPBOARD_CLEAR_SECS: &[u32] = &[15, 30, 60, 0];
 
 fn default_auto_lock_minutes() -> u32 {
     15
+}
+fn default_clipboard_clear_secs() -> u32 {
+    30
 }
 fn default_accent() -> String {
     "teal".into()
@@ -22,6 +27,9 @@ pub struct Settings {
     /// 无操作多少分钟后自动锁定；0 表示永不。
     #[serde(default = "default_auto_lock_minutes")]
     pub auto_lock_minutes: u32,
+    /// 复制敏感字段后多少秒自动清除剪贴板；0 表示从不。
+    #[serde(default = "default_clipboard_clear_secs")]
+    pub clipboard_clear_secs: u32,
     /// 强调色 key。
     #[serde(default = "default_accent")]
     pub accent: String,
@@ -37,6 +45,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             auto_lock_minutes: default_auto_lock_minutes(),
+            clipboard_clear_secs: default_clipboard_clear_secs(),
             accent: default_accent(),
             density: default_density(),
             touch_id_enabled: false,
@@ -53,6 +62,9 @@ impl Settings {
         if !DENSITIES.contains(&self.density.as_str()) {
             self.density = default_density();
         }
+        if !CLIPBOARD_CLEAR_SECS.contains(&self.clipboard_clear_secs) {
+            self.clipboard_clear_secs = default_clipboard_clear_secs();
+        }
         self
     }
 }
@@ -65,6 +77,7 @@ mod tests {
     fn default_is_sane() {
         let s = Settings::default();
         assert_eq!(s.auto_lock_minutes, 15);
+        assert_eq!(s.clipboard_clear_secs, 30);
         assert_eq!(s.accent, "teal");
         assert_eq!(s.density, "comfortable");
         assert!(!s.touch_id_enabled);
@@ -74,6 +87,7 @@ mod tests {
     fn sanitize_rejects_unknown_keys() {
         let s = Settings {
             auto_lock_minutes: 5,
+            clipboard_clear_secs: 30,
             accent: "neon-pink".into(),
             density: "huge".into(),
             touch_id_enabled: true,
@@ -86,9 +100,26 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_clamps_clipboard_secs_to_whitelist() {
+        let s = Settings {
+            clipboard_clear_secs: 999,
+            ..Settings::default()
+        }
+        .sanitize();
+        assert_eq!(s.clipboard_clear_secs, 30);
+        let s = Settings {
+            clipboard_clear_secs: 0,
+            ..Settings::default()
+        }
+        .sanitize();
+        assert_eq!(s.clipboard_clear_secs, 0); // 0=从不 是合法值
+    }
+
+    #[test]
     fn sanitize_keeps_valid_keys() {
         let s = Settings {
             auto_lock_minutes: 0,
+            clipboard_clear_secs: 60,
             accent: "violet".into(),
             density: "compact".into(),
             touch_id_enabled: false,
@@ -97,6 +128,7 @@ mod tests {
         assert_eq!(s.accent, "violet");
         assert_eq!(s.density, "compact");
         assert_eq!(s.auto_lock_minutes, 0);
+        assert_eq!(s.clipboard_clear_secs, 60);
     }
 
     #[test]
