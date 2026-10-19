@@ -74,7 +74,20 @@ pnpm build        # 仅构建前端到 dist/
 cd src-tauri && cargo test   # 运行 Rust 加密/合并单测
 ```
 
-> **关于签名**：`pnpm tauri dev` 产出的是临时 ad-hoc 签名，**Touch ID 无法启用**（数据保护钥匙串要求稳定签名），且每次构建都会触发一次钥匙串授权弹窗。正式使用请 `pnpm tauri build` 并用你自己的开发者证书签名。
+> **关于签名**：`pnpm tauri dev` 产出的是临时 ad-hoc 签名，**Touch ID 无法启用**（数据保护钥匙串要求稳定签名），且每次重新编译都会因签名身份变化而触发钥匙串授权弹窗。正式使用请 `pnpm tauri build` 并用你自己的开发者证书签名。
+
+### 本地自签打包（可选）
+
+没有 Apple 开发者账号时，可用仓库自带的脚本生成一个**本地自签代码签名身份**，让构建出的 `.app` 拥有稳定签名：钥匙串 ACL 一次授权永久有效（不再频繁弹窗），并可启用 Touch ID。仅用于本地自用，**不用于分发**（自签证书过不了 Gatekeeper 公证）。
+
+```bash
+scripts/setup-signing.sh   # 一次性：生成自签证书 → 独立钥匙串 → 写 .env.signing（已 gitignore）
+scripts/build-signed.sh    # 用该身份构建签名 .app（可加 --debug）
+```
+
+构建产物在 `src-tauri/target/release/bundle/macos/Sentinel.app`，直接打开即可。`.env.signing` 与证书私钥均不入库；其他贡献者无需运行此步骤，普通 `pnpm tauri build` 仍可构建（仅无稳定签名）。
+
+> 提示：DMG 打包在 macOS 上偶发 `hdiutil 资源忙` 失败，本地自用可加 `--bundles app` 只产 `.app`：`scripts/build-signed.sh --bundles app`。`pnpm tauri dev` 仍是 ad-hoc 签名（用于热重载开发）；要验证 Touch ID / 稳定钥匙串身份请运行签名后的 `.app`。
 
 ## 🔄 配置 GitHub 同步
 
