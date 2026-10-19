@@ -2,6 +2,9 @@
 //! 保险库密文经 GitHub Contents API 拉取/推送。云端只经手密文（PRD §2.4）。
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
+use zeroize::Zeroizing;
 
 const KEYCHAIN_SERVICE: &str = "com.sentinel.app";
 const KEYCHAIN_USER: &str = "github-sync-token";
@@ -22,6 +25,9 @@ pub struct SyncConfig {
     /// 上次同步成功的 unix 秒；从未同步为 None。
     #[serde(default)]
     pub last_sync_at: Option<i64>,
+    /// 钥匙串中是否已存同步 token 的标记。读标记而非读钥匙串，避免触发 ACL 弹窗。
+    #[serde(default)]
+    pub has_token: bool,
 }
 
 fn default_branch() -> String {
@@ -43,8 +49,17 @@ fn entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_USER).map_err(|e| e.to_string())
 }
 
+// 会话内 token 缓存：未签名 dev 构建下每次读钥匙串都会触发 ACL 弹窗，
+// 故首次读入后进程内复用；set/delete 时同步维护缓存。
+static TOKEN_CACHE: OnceLock<Mutex<Option<Zeroizing<String>>>> = OnceLock::new();
+fn token_cache() -> &'static Mutex<Option<Zeroizing<String>>> {
+    TOKEN_CACHE.get_or_init(|| Mutex::new(None))
+}
+
 pub fn set_token(token: &str) -> Result<(), String> {
-    entry()?.set_password(token).map_err(|e| e.to_string())
+    entry()?.set_password(token).map_err(|e| e.to_string())?;
+    *token_cache().lock().unwrap() = Some(Zeroizing::new(token.to_string()));
+    Ok(())
 }
 
 pub fn get_token() -> Result<Option<String>, String> {
@@ -55,12 +70,40 @@ pub fn get_token() -> Result<Option<String>, String> {
     }
 }
 
+/// 优先用会话缓存，未命中才读钥匙串并回填缓存，减少 ACL 弹窗频率。
+pub fn get_token_cached() -> Result<Option<String>, String> {
+    if let Some(t) = token_cache().lock().unwrap().as_ref() {
+        return Ok(Some(t.to_string()));
+    }
+    let t = get_token()?;
+    if let Some(t) = &t {
+        *token_cache().lock().unwrap() = Some(Zeroizing::new(t.clone()));
+    }
+    Ok(t)
+}
+
 pub fn delete_token() -> Result<(), String> {
-    match entry()?.delete_credential() {
+    let r = match entry()?.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(e.to_string()),
+    };
+    *token_cache().lock().unwrap() = None;
+    r
+}
+
+static LEGACY_PROBED: AtomicBool = AtomicBool::new(false);
+
+/// 旧 sync.json 无 has_token 标记时，整个进程读一次钥匙串回填标记；返回是否有改动。
+pub fn backfill_has_token(cfg: &mut SyncConfig) -> bool {
+    if cfg.has_token || LEGACY_PROBED.swap(true, Ordering::SeqCst) {
+        return false;
     }
+    let has = get_token().map(|t| t.is_some()).unwrap_or(false);
+    if has {
+        cfg.has_token = true;
+    }
+    has
 }
 
 // ---------- GitHub Contents API ----------

@@ -163,7 +163,7 @@ pub async fn change_master_password(
 
     // 已配置同步 → 对齐检查 + 推送（在写本地文件之前完成，失败则本地不动）
     let cfg = load_sync_config(&app)?;
-    let token = sync::get_token()?;
+    let token = sync::get_token_cached()?;
     let remote_synced = cfg.is_complete() && token.is_some();
     if let Some(token) = token.filter(|_| cfg.is_complete()) {
         match sync::pull(&cfg, &token).await? {
@@ -376,6 +376,11 @@ fn load_sync_config(app: &AppHandle) -> Result<SyncConfig, String> {
     serde_json::from_str(&s).map_err(|e| e.to_string())
 }
 
+fn write_sync_config(app: &AppHandle, cfg: &SyncConfig) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
+    std::fs::write(sync_config_path(app)?, json).map_err(|e| e.to_string())
+}
+
 fn load_base(app: &AppHandle, key: &[u8; KEY_LEN]) -> Vec<Item> {
     // 基线快照解密失败（如尚无快照）时按空处理，首次同步即把所有条目视作各自新增。
     let Ok(path) = base_path(app) else { return Vec::new() };
@@ -400,13 +405,17 @@ fn record_sync_success(app: &AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_sync_config(app: AppHandle) -> Result<SyncConfigView, String> {
-    let cfg = load_sync_config(&app)?;
+    let mut cfg = load_sync_config(&app)?;
+    // 旧配置无 has_token 标记时回填一次；之后只读标记、不读钥匙串，避免 ACL 弹窗。
+    if sync::backfill_has_token(&mut cfg) {
+        let _ = write_sync_config(&app, &cfg);
+    }
     Ok(SyncConfigView {
         owner: cfg.owner,
         repo: cfg.repo,
         branch: cfg.branch,
         path: cfg.path,
-        has_token: sync::get_token()?.is_some(),
+        has_token: cfg.has_token,
         auto_sync_minutes: cfg.auto_sync_minutes,
         last_sync_at: cfg.last_sync_at,
     })
@@ -415,7 +424,11 @@ pub fn get_sync_config(app: AppHandle) -> Result<SyncConfigView, String> {
 #[tauri::command]
 pub fn save_sync_config(app: AppHandle, input: SyncConfigInput) -> Result<(), String> {
     // last_sync_at 由同步流程维护，前端保存配置时原样保留。
-    let prev_last_sync = load_sync_config(&app)?.last_sync_at;
+    let prev = load_sync_config(&app)?;
+    let has_token = match &input.token {
+        None => prev.has_token,
+        Some(t) => !t.trim().is_empty(),
+    };
     let cfg = SyncConfig {
         owner: input.owner.trim().to_string(),
         repo: input.repo.trim().to_string(),
@@ -433,10 +446,10 @@ pub fn save_sync_config(app: AppHandle, input: SyncConfigInput) -> Result<(), St
             }
         },
         auto_sync_minutes: input.auto_sync_minutes,
-        last_sync_at: prev_last_sync,
+        last_sync_at: prev.last_sync_at,
+        has_token,
     };
-    let json = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
-    std::fs::write(sync_config_path(&app)?, json).map_err(|e| e.to_string())?;
+    write_sync_config(&app, &cfg)?;
 
     match input.token {
         None => {} // 不改动已存 token
@@ -453,7 +466,7 @@ pub async fn test_sync_connection(app: AppHandle) -> Result<String, String> {
     if !cfg.is_complete() {
         return Err("请先填写仓库 owner 与名称".into());
     }
-    let token = sync::get_token()?.ok_or("请先填写 GitHub Token")?;
+    let token = sync::get_token_cached()?.ok_or("请先填写 GitHub Token")?;
     sync::verify(&cfg, &token).await
 }
 
@@ -510,7 +523,7 @@ pub async fn sync_now(app: AppHandle, state: State<'_, AppState>) -> Result<Sync
     if !cfg.is_complete() {
         return Err("尚未配置同步仓库".into());
     }
-    let token = sync::get_token()?.ok_or("尚未配置 GitHub Token")?;
+    let token = sync::get_token_cached()?.ok_or("尚未配置 GitHub Token")?;
 
     // 拉取并解密远端（远端由另一台机器用不同 salt 加密，需用主密码重新派生）。
     let remote = sync::pull(&cfg, &token).await?;
@@ -585,7 +598,7 @@ pub async fn resolve_sync(
     };
 
     let cfg = load_sync_config(&app)?;
-    let token = sync::get_token()?.ok_or("尚未配置 GitHub Token")?;
+    let token = sync::get_token_cached()?.ok_or("尚未配置 GitHub Token")?;
 
     let final_items = merge::apply_resolutions(pending.merged, pending.conflicts, &choices);
     finalize_sync(
