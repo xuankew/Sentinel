@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sentinel · UI 交互稿</title>
+<style>
+  :root{
+    --bg:#0A0E14;
+    --bg-soft:#0F141C;
+    --panel:rgba(255,255,255,.035);
+    --panel-2:rgba(255,255,255,.06);
+    --stroke:rgba(255,255,255,.08);
+    --stroke-2:rgba(255,255,255,.14);
+    --text:#E6EDF3;
+    --text-dim:#8B98A5;
+    --text-faint:#5A6672;
+    --accent:#4FD1C5;
+    --accent-2:#3B82F6;
+    --danger:#F87171;
+    --warn:#FBBF24;
+    --grad:linear-gradient(135deg,#4FD1C5,#3B82F6);
+    --radius:14px;
+    --radius-sm:10px;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",Roboto,sans-serif;
+    --shadow:0 20px 60px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--sans);
+    background:var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  /* ambient background */
+  .ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .ambient::before{
+    content:"";position:absolute;width:900px;height:900px;left:-260px;top:-320px;
+    background:radial-gradient(circle,rgba(79,209,197,.14),transparent 62%);filter:blur(10px);
+  }
+  .ambient::after{
+    content:"";position:absolute;width:1000px;height:1000px;right:-320px;bottom:-420px;
+    background:radial-gradient(circle,rgba(59,130,246,.14),transparent 62%);
+  }
+  .grid-overlay{
+    position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px);
+    background-size:44px 44px;
+    mask-image:radial-gradient(circle at 50% 40%,#000 30%,transparent 78%);
+  }
+
+  /* ---------- mockup chrome (screen switcher) ---------- */
+  .switcher{
+    position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100;
+    display:flex;gap:4px;padding:5px;border-radius:999px;
+    background:rgba(10,14,20,.72);backdrop-filter:blur(14px);
+    border:1px solid var(--stroke);box-shadow:var(--shadow);
+  }
+  .switcher button{
+    border:0;background:transparent;color:var(--text-dim);cursor:pointer;
+    font-family:var(--sans);font-size:12.5px;font-weight:500;
+    padding:7px 15px;border-radius:999px;transition:.18s;white-space:nowrap;
+  }
+  .switcher button:hover{color:var(--text)}
+  .switcher button.active{background:var(--grad);color:#04121a;font-weight:600}
+  .hint{
+    position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:100;
+    font-size:11.5px;color:var(--text-faint);letter-spacing:.3px;
+  }
+
+  /* ---------- screens ---------- */
+  .screen{position:fixed;inset:0;z-index:1;display:none}
+  .screen.active{display:block}
+
+  /* window frame to imitate a mac app */
+  .window{
+    position:absolute;inset:44px 26px 40px;border-radius:18px;overflow:hidden;
+    background:var(--bg-soft);border:1px solid var(--stroke);box-shadow:var(--shadow);
+    display:flex;flex-direction:column;
+  }
+  .titlebar{
+    height:40px;flex:0 0 40px;display:flex;align-items:center;gap:8px;padding:0 14px;
+    background:rgba(255,255,255,.02);border-bottom:1px solid var(--stroke);
+  }
+  .dot{width:12px;height:12px;border-radius:50%}
+  .dot.r{background:#FF5F57}.dot.y{background:#FEBC2E}.dot.g{background:#28C840}
+  .titlebar .tb-title{margin-left:12px;font-size:12px;color:var(--text-faint);letter-spacing:.4px}
+
+  /* ---------- UNLOCK ---------- */
+  .unlock-wrap{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+  .unlock-card{width:360px;text-align:center;padding:12px}
+  .shield{
+    width:88px;height:88px;margin:0 auto 22px;border-radius:24px;
+    background:var(--grad);display:flex;align-items:center;justify-content:center;
+    box-shadow:0 12px 40px rgba(59,130,246,.4);position:relative;
+    animation:pulse 3.4s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{box-shadow:0 12px 40px rgba(59,130,246,.34)}50%{box-shadow:0 12px 58px rgba(79,209,197,.5)}}
+  .shield svg{width:46px;height:46px;stroke:#04121a}
+  .brand{font-size:26px;font-weight:700;letter-spacing:.5px}
+  .brand span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .tagline{font-size:13px;color:var(--text-dim);margin-top:6px;margin-bottom:26px;letter-spacing:.3px}
+  .field{
+    display:flex;align-items:center;gap:10px;background:var(--panel);
+    border:1px solid var(--stroke);border-radius:12px;padding:0 14px;height:48px;
+    transition:.18s;
+  }
+  .field:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,209,197,.12)}
+  .field input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font-size:14.5px;font-family:var(--sans)}
+  .field input::placeholder{color:var(--text-faint)}
+  .field .ic{color:var(--text-faint);display:flex}
+  .btn{
+    border:0;cursor:pointer;font-family:var(--sans);font-weight:600;font-size:14px;
+    border-radius:11px;padding:12px 18px;transition:.18s;
+  }
+  .btn-primary{width:100%;height:48px;margin-top:16px;background:var(--grad);color:#04121a}
+  .btn-primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
+  .btn-ghost{background:var(--panel);border:1px solid var(--stroke);color:var(--text)}
+  .btn-ghost:hover{background:var(--panel-2);border-color:var(--stroke-2)}
+  .linkrow{margin-top:16px;font-size:12px;color:var(--text-faint)}
+  .linkrow a{color:var(--accent);text-decoration:none;cursor:pointer}
+  .strength{height:4px;border-radius:4px;background:var(--stroke);margin-top:12px;overflow:hidden}
+  .strength i{display:block;height:100%;width:72%;background:var(--grad)}
+  .strength-label{font-size:11px;color:var(--text-dim);margin-top:7px;text-align:left}
+
+  /* ---------- MAIN APP (3 col) ---------- */
+  .app{flex:1;display:flex;min-height:0}
+  .sidebar{
+    width:224px;flex:0 0 224px;border-right:1px solid var(--stroke);
+    display:flex;flex-direction:column;padding:16px 12px;background:rgba(255,255,255,.012)
+  }
+  .side-brand{display:flex;align-items:center;gap:10px;padding:2px 8px 16px}
+  .side-logo{width:30px;height:30px;border-radius:9px;background:var(--grad);display:flex;align-items:center;justify-content:center}
+  .side-logo svg{width:17px;height:17px;stroke:#04121a}
+  .side-brand b{font-size:15px;letter-spacing:.4px}
+  .nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-faint);padding:12px 10px 6px}
+  .nav-item{
+    display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;
+    color:var(--text-dim);font-size:13.5px;cursor:pointer;transition:.15s;margin-bottom:2px
+  }
+  .nav-item:hover{background:var(--panel);color:var(--text)}
+  .nav-item.active{background:var(--panel-2);color:var(--text);font-weight:600}
+  .nav-item.active .nic{color:var(--accent)}
+  .nav-item .nic{display:flex;color:var(--text-faint)}
+  .nav-item .count{margin-left:auto;font-size:11px;color:var(--text-faint);background:var(--panel);padding:1px 7px;border-radius:999px}
+  .side-foot{margin-top:auto;border-top:1px solid var(--stroke);padding-top:12px}
+  .sync-pill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);padding:8px 10px}
+  .sync-dot{width:7px;height:7px;border-radius:50%;background:#28C840;box-shadow:0 0 8px #28C840}
+  .sync-dot.dirty{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+
+  .list-col{width:308px;flex:0 0 308px;border-right:1px solid var(--stroke);display:flex;flex-direction:column;min-height:0}
+  .search-wrap{padding:14px 14px 10px}
+  .search{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--stroke);border-radius:11px;padding:0 12px;height:42px}
+  .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,209,197,.1)}
+  .search input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font-size:13.5px}
+  .search input::placeholder{color:var(--text-faint)}
+  .kbd{font-size:10.5px;color:var(--text-faint);border:1px solid var(--stroke);border-radius:5px;padding:1px 6px;font-family:var(--mono)}
+  .list-head{display:flex;align-items:center;justify-content:space-between;padding:6px 16px 8px}
+  .list-head span{font-size:12px;color:var(--text-faint)}
+  .new-btn{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:600}
+  .items{flex:1;overflow-y:auto;padding:0 8px 12px}
+  .item{
+    display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:11px;cursor:pointer;
+    border:1px solid transparent;margin-bottom:3px;transition:.14s
+  }
+  .item:hover{background:var(--panel)}
+  .item.active{background:var(--panel-2);border-color:var(--stroke-2)}
+  .avatar{width:36px;height:36px;border-radius:10px;flex:0 0 36px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#04121a}
+  .item .meta{min-width:0;flex:1}
+  .item .t{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .s{font-size:11.5px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+  .star{color:var(--text-faint);display:flex}
+  .star.on{color:var(--warn)}
+
+  .detail{flex:1;display:flex;flex-direction:column;min-width:0;overflow-y:auto}
+  .detail-head{padding:24px 30px 16px;border-bottom:1px solid var(--stroke);display:flex;align-items:flex-start;gap:16px}
+  .detail-head .avatar{width:52px;height:52px;flex:0 0 52px;border-radius:14px;font-size:20px}
+  .detail-title{font-size:20px;font-weight:700}
+  .detail-sub{font-size:12.5px;color:var(--text-dim);margin-top:4px}
+  .detail-actions{margin-left:auto;display:flex;gap:8px}
+  .icon-btn{width:36px;height:36px;border-radius:10px;background:var(--panel);border:1px solid var(--stroke);color:var(--text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s}
+  .icon-btn:hover{background:var(--panel-2);color:var(--text);border-color:var(--stroke-2)}
+  .icon-btn.danger:hover{color:var(--danger);border-color:rgba(248,113,113,.4)}
+  .detail-body{padding:22px 30px}
+  .field-row{margin-bottom:20px}
+  .field-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);margin-bottom:8px}
+  .secret-box{
+    display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--stroke);
+    border-radius:11px;padding:12px 14px
+  }
+  .secret-val{flex:1;font-family:var(--mono);font-size:14px;letter-spacing:.5px;color:var(--text)}
+  .secret-val.masked{color:var(--text-dim);letter-spacing:2px}
+  .mini-btn{width:32px;height:32px;border-radius:8px;background:transparent;border:1px solid var(--stroke);color:var(--text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;flex:0 0 32px}
+  .mini-btn:hover{color:var(--accent);border-color:var(--accent);background:rgba(79,209,197,.08)}
+  .plain-val{font-size:14px;color:var(--text)}
+  .plain-val a{color:var(--accent);text-decoration:none}
+  .tag-chips{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{font-size:11.5px;color:var(--text-dim);background:var(--panel);border:1px solid var(--stroke);padding:4px 11px;border-radius:999px}
+  .note-text{font-size:13.5px;color:var(--text-dim);line-height:1.7;background:var(--panel);border:1px solid var(--stroke);border-radius:11px;padding:14px}
+
+  /* ---------- MODAL (generic) ---------- */
+  .modal-backdrop{position:absolute;inset:0;background:rgba(4,7,11,.6);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal-backdrop.show{display:flex}
+  .modal{width:460px;max-height:82%;overflow-y:auto;background:#111721;border:1px solid var(--stroke-2);border-radius:18px;box-shadow:var(--shadow)}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 22px 12px}
+  .modal-head h3{font-size:16px;font-weight:700}
+  .modal-body{padding:6px 22px 8px}
+  .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px 20px}
+  .form-group{margin-bottom:15px}
+  .form-group label{display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:7px;letter-spacing:.3px}
+  .input{width:100%;background:var(--panel);border:1px solid var(--stroke);border-radius:10px;padding:11px 13px;color:var(--text);font-size:13.5px;font-family:var(--sans);outline:0}
+  .input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,209,197,.1)}
+  .input.mono{font-family:var(--mono)}
+  .type-tabs{display:flex;gap:6px;margin-bottom:18px}
+  .type-tab{flex:1;text-align:center;padding:10px;border-radius:10px;background:var(--panel);border:1px solid var(--stroke);color:var(--text-dim);font-size:12.5px;cursor:pointer;transition:.15s}
+  .type-tab.active{background:var(--panel-2);border-color:var(--accent);color:var(--text);font-weight:600}
+  .gen-row{display:flex;gap:8px}
+  .gen-row .input{flex:1}
+
+  /* ---------- SETTINGS ---------- */
+  .settings{flex:1;overflow-y:auto;padding:28px 34px}
+  .settings h2{font-size:20px;margin-bottom:4px}
+  .settings .sub{font-size:13px;color:var(--text-dim);margin-bottom:24px}
+  .set-group{background:var(--panel);border:1px solid var(--stroke);border-radius:14px;padding:6px 20px;margin-bottom:18px}
+  .set-row{display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--stroke)}
+  .set-row:last-child{border-bottom:0}
+  .set-row .lbl{font-size:13.5px;font-weight:500}
+  .set-row .desc{font-size:11.5px;color:var(--text-faint);margin-top:4px;max-width:360px;line-height:1.5}
+  .select{background:var(--bg-soft);border:1px solid var(--stroke);border-radius:9px;padding:8px 12px;color:var(--text);font-size:12.5px;font-family:var(--sans);outline:0}
+  .toggle{width:44px;height:25px;border-radius:999px;background:var(--stroke-2);position:relative;cursor:pointer;transition:.2s;flex:0 0 44px}
+  .toggle.on{background:var(--grad)}
+  .toggle i{position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#fff;transition:.2s}
+  .toggle.on i{left:22px}
+  .group-title{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-faint);margin:22px 0 10px}
+
+  /* ---------- CONFLICT ---------- */
+  .conflict-item{background:var(--panel);border:1px solid var(--stroke);border-radius:12px;padding:14px;margin-bottom:12px}
+  .conflict-item .ci-title{font-size:13.5px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .conflict-cols{display:flex;gap:10px}
+  .conflict-col{flex:1;background:var(--bg-soft);border:1px solid var(--stroke);border-radius:9px;padding:10px;cursor:pointer;transition:.15s}
+  .conflict-col:hover{border-color:var(--stroke-2)}
+  .conflict-col.sel{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,209,197,.15)}
+  .conflict-col .cc-h{font-size:11px;color:var(--text-faint);margin-bottom:6px;display:flex;justify-content:space-between}
+  .conflict-col .cc-v{font-family:var(--mono);font-size:12.5px;color:var(--text-dim)}
+
+  .badge-warn{background:rgba(251,191,36,.14);color:var(--warn);border:1px solid rgba(251,191,36,.3)}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:9px;border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2);background-clip:padding-box}
+  .fade-in{animation:fade .28s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="ambient"></div>
+<div class="grid-overlay"></div>
+
+<!-- screen switcher (mockup control, not part of the real app) -->
+<div class="switcher">
+  <button data-s="unlock" class="active">解锁</button>
+  <button data-s="create">创建主密码</button>
+  <button data-s="app">主界面</button>
+  <button data-s="new">新建条目</button>
+  <button data-s="settings">设置</button>
+  <button data-s="conflict">同步冲突</button>
+</div>
+<div class="hint">交互稿 · 顶部切换界面 · 点击条目/眼睛/复制/开关可体验交互</div>
+
+<!-- ============ UNLOCK ============ -->
+<section class="screen active" id="unlock">
+  <div class="window">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">Sentinel — 已锁定</span></div>
+    <div class="unlock-wrap">
+      <div class="unlock-card fade-in">
+        <div class="shield">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <div class="brand">Senti<span>nel</span></div>
+        <div class="tagline">你的密钥，寸步不让</div>
+        <div class="field">
+          <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>
+          <input type="password" placeholder="输入主密码" value="••••••••••••" />
+          <span class="ic" style="cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        </div>
+        <button class="btn btn-primary" onclick="go('app')">解锁保险库</button>
+        <div class="linkrow">忘记主密码？<a>无法找回 · 数据不可恢复</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CREATE MASTER ============ -->
+<section class="screen" id="create">
+  <div class="window">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">Sentinel — 初始化</span></div>
+    <div class="unlock-wrap">
+      <div class="unlock-card fade-in">
+        <div class="shield">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v5M12 16h.01"/></svg>
+        </div>
+        <div class="brand">创建你的<span>保险库</span></div>
+        <div class="tagline">主密码是唯一钥匙，请务必牢记 —— 无法找回</div>
+        <div class="field" style="margin-bottom:12px">
+          <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>
+          <input type="password" placeholder="设置主密码" value="••••••••••" />
+        </div>
+        <div class="strength"><i></i></div>
+        <div class="strength-label">强度：良好 · 建议 12 位以上，混合大小写、数字、符号</div>
+        <div class="field" style="margin-top:14px">
+          <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>
+          <input type="password" placeholder="再次输入确认" value="••••••••••" />
+        </div>
+        <button class="btn btn-primary" onclick="go('app')">创建并进入</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MAIN APP ============ -->
+<section class="screen" id="app">
+  <div class="window">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">Sentinel</span></div>
+    <div class="app">
+      <!-- sidebar -->
+      <aside class="sidebar">
+        <div class="side-brand">
+          <div class="side-logo"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <b>Sentinel</b>
+        </div>
+        <div class="nav-item active"><span class="nic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>全部<span class="count">28</span></div>
+        <div class="nav-item"><span class="nic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg></span>收藏<span class="count">5</span></div>
+        <div class="nav-label">类型</div>
+        <div class="nav-item"><span class="nic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>登录密码<span class="count">19</span></div>
+        <div class="nav-item"><span class="nic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 11-7 7 5 5 0 017-7zm0 0L15 8m0 0l3 3 3-3-3-3"/></svg></span>API Key<span class="count">7</span></div>
+        <div class="nav-item"><span class="nic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></span>安全笔记<span class="count">2</span></div>
+        <div class="nav-label">标签</div>
+        <div class="nav-item"><span class="nic" style="color:var(--accent)">#</span>dev<span class="count">11</span></div>
+        <div class="nav-item"><span class="nic" style="color:var(--accent-2)">#</span>finance<span class="count">4</span></div>
+        <div class="side-foot">
+          <div class="sync-pill"><span class="sync-dot"></span>已同步 · 2 分钟前</div>
+          <div class="nav-item" onclick="go('settings')"><span class="nic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.1A1.6 1.6 0 007 19.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.6 1.6 0 003 15H3a2 2 0 110-4h.1A1.6 1.6 0 004.6 9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.6 1.6 0 009 4.6V3a2 2 0 114 0v.1A1.6 1.6 0 0015 4.6l.1-.1a2 2 0 112.8 2.8l-.1.1A1.6 1.6 0 0019.4 9H21a2 2 0 110 4h-.1z"/></svg></span>设置</div>
+          <div class="nav-item" onclick="go('unlock')"><span class="nic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/></svg></span>锁定 <span style="margin-left:auto" class="kbd">⌘L</span></div>
+        </div>
+      </aside>
+
+      <!-- list -->
+      <div class="list-col">
+        <div class="search-wrap">
+          <div class="search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input placeholder="搜索标题、用户名、网址…" />
+            <span class="kbd">⌘K</span>
+          </div>
+        </div>
+        <div class="list-head">
+          <span>全部条目 · 28</span>
+          <span class="new-btn" onclick="go('new')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>新建
+          </span>
+        </div>
+        <div class="items" id="itemList"></div>
+      </div>
+
+      <!-- detail -->
+      <div class="detail" id="detail"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ NEW ITEM ============ -->
+<section class="screen" id="new">
+  <div class="window">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">Sentinel</span></div>
+    <div class="app" style="filter:blur(1px);opacity:.5">
+      <aside class="sidebar"><div class="side-brand"><div class="side-logo"></div><b>Sentinel</b></div></aside>
+      <div class="list-col"></div><div class="detail"></div>
+    </div>
+    <div class="modal-backdrop show">
+      <div class="modal fade-in">
+        <div class="modal-head"><h3>新建条目</h3>
+          <div class="icon-btn" onclick="go('app')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></div>
+        </div>
+        <div class="modal-body">
+          <div class="type-tabs">
+            <div class="type-tab active">登录密码</div>
+            <div class="type-tab">API Key</div>
+            <div class="type-tab">安全笔记</div>
+          </div>
+          <div class="form-group"><label>标题</label><input class="input" placeholder="例如：GitHub" value="AWS Console" /></div>
+          <div class="form-group"><label>用户名</label><input class="input" placeholder="username / email" value="admin@corp.com" /></div>
+          <div class="form-group"><label>密码</label>
+            <div class="gen-row">
+              <input class="input mono" value="Xk9#mP2$vL7qR4wZ" />
+              <button class="btn btn-ghost" style="padding:0 14px" title="生成强密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/></svg></button>
+            </div>
+          </div>
+          <div class="form-group"><label>网址</label><input class="input" placeholder="https://" value="https://console.aws.amazon.com" /></div>
+          <div class="form-group"><label>标签</label><input class="input" placeholder="用逗号分隔，如 dev, cloud" value="dev, cloud" /></div>
+          <div class="form-group"><label>备注</label><input class="input" placeholder="可选" /></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" onclick="go('app')">取消</button>
+          <button class="btn btn-primary" style="width:auto;padding:11px 22px;margin:0" onclick="go('app')">保存条目</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section class="screen" id="settings">
+  <div class="window">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">Sentinel — 设置</span></div>
+    <div class="settings fade-in">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:2px">
+        <div class="icon-btn" onclick="go('app')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></div>
+        <h2>设置</h2>
+      </div>
+      <div class="sub">安全、同步与外观</div>
+
+      <div class="group-title">安全</div>
+      <div class="set-group">
+        <div class="set-row"><div><div class="lbl">修改主密码</div><div class="desc">需验证旧密码，之后整个保险库会用新密钥重新加密。</div></div><button class="btn btn-ghost" style="padding:8px 14px">修改</button></div>
+        <div class="set-row"><div><div class="lbl">自动锁定</div><div class="desc">闲置指定时间后自动回到锁定页并清零内存密钥。</div></div>
+          <select class="select"><option>5 分钟</option><option>1 分钟</option><option>15 分钟</option><option>30 分钟</option><option>从不</option></select></div>
+        <div class="set-row"><div><div class="lbl">剪贴板自动清除</div><div class="desc">复制密码 / Key 后，到时自动从剪贴板清除。</div></div>
+          <select class="select"><option>30 秒</option><option>15 秒</option><option>60 秒</option><option>从不</option></select></div>
+        <div class="set-row"><div><div class="lbl">Touch ID 解锁</div><div class="desc">便利层：解锁一次后可用指纹快速解锁，密钥包装存于系统 Keychain。</div></div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+      </div>
+
+      <div class="group-title">同步（GitHub）</div>
+      <div class="set-group">
+        <div class="set-row"><div><div class="lbl">仓库</div><div class="desc">推荐私有仓库。云端只存密文，永不含明文。</div></div><span class="plain-val" style="font-family:var(--mono);font-size:12.5px;color:var(--accent)">me/sentinel-vault</span></div>
+        <div class="set-row"><div><div class="lbl">访问令牌 (Token)</div><div class="desc">细粒度 PAT，仅需该仓库 contents:read/write。存于 Keychain。</div></div><button class="btn btn-ghost" style="padding:8px 14px">重新配置</button></div>
+        <div class="set-row"><div><div class="lbl">自动同步</div><div class="desc">关闭时仅手动同步（更可控）。开启后解锁拉取、改动延迟推送。</div></div>
+          <div class="toggle" onclick="this.classList.toggle('on')"><i></i></div></div>
+        <div class="set-row"><div><div class="lbl">立即同步</div><div class="desc">上次同步：2 分钟前 · 本地无未推送改动。</div></div><button class="btn btn-primary" style="width:auto;padding:9px 18px;margin:0">同步</button></div>
+      </div>
+
+      <div class="group-title">外观与数据</div>
+      <div class="set-group">
+        <div class="set-row"><div><div class="lbl">主题</div></div><select class="select"><option>深色（推荐）</option><option>浅色</option><option>跟随系统</option></select></div>
+        <div class="set-row"><div><div class="lbl">导出加密备份</div><div class="desc">导出 .sentinel 密文文件，用于换机迁移。不提供明文导出。</div></div><button class="btn btn-ghost" style="padding:8px 14px">导出</button></div>
+        <div class="set-row"><div><div class="lbl">关于</div><div class="desc">Sentinel v0.1 · Tauri + SolidJS · Argon2id + XChaCha20-Poly1305</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CONFLICT ============ -->
+<section class="screen" id="conflict">
+  <div class="window">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">Sentinel — 同步</span></div>
+    <div class="app" style="filter:blur(1px);opacity:.5">
+      <aside class="sidebar"><div class="side-brand"><div class="side-logo"></div><b>Sentinel</b></div></aside>
+      <div class="list-col"></div><div class="detail"></div>
+    </div>
+    <div class="modal-backdrop show">
+      <div class="modal fade-in" style="width:520px">
+        <div class="modal-head"><h3 style="display:flex;align-items:center;gap:9px">
+          <span class="chip badge-warn" style="padding:3px 9px">同步冲突</span> 解决 1 处冲突</h3></div>
+        <div class="modal-body">
+          <p style="font-size:12.5px;color:var(--text-dim);line-height:1.6;margin-bottom:16px">
+            远端与本地都修改了同一条目。请选择保留哪个版本（另一个会存入历史）。</p>
+          <div class="conflict-item">
+            <div class="ci-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>AWS Console · 密码字段</div>
+            <div class="conflict-cols">
+              <div class="conflict-col sel" onclick="pickConflict(this)"><div class="cc-h"><span>本地</span><span>刚刚</span></div><div class="cc-v">Xk9#mP2$vL7qR4wZ</div></div>
+              <div class="conflict-col" onclick="pickConflict(this)"><div class="cc-h"><span>远端 (MBP-2)</span><span>3 小时前</span></div><div class="cc-v">Old#Aws8821!x</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost">全部保留本地</button>
+          <button class="btn btn-primary" style="width:auto;padding:11px 22px;margin:0" onclick="go('app')">应用并完成同步</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // ---- sample data ----
+  const COLORS=["linear-gradient(135deg,#4FD1C5,#3B82F6)","linear-gradient(135deg,#F6AD55,#ED8936)","linear-gradient(135deg,#9F7AEA,#6B46C1)","linear-gradient(135deg,#F687B3,#D53F8C)","linear-gradient(135deg,#63B3ED,#3182CE)","linear-gradient(135deg,#68D391,#38A169)"];
+  const items=[
+    {type:"login",title:"GitHub",sub:"me@example.com",fav:true,color:0,fields:[
+      {l:"用户名",v:"me@example.com"},{l:"密码",secret:true,v:"Gh#2024$SecurePass!"},{l:"网址",link:"https://github.com"},{l:"双步验证 (TOTP)",v:"648 291",totp:true}],tags:["dev","git"]},
+    {type:"api",title:"OpenAI API Key",sub:"sk-•••••••••••4f2a",fav:true,color:3,fields:[
+      {l:"Key 名称",v:"production-key"},{l:"Secret",secret:true,v:"sk-proj-••••••••••••4f2a"},{l:"服务",link:"https://platform.openai.com"}],tags:["dev","ai"]},
+    {type:"login",title:"AWS Console",sub:"admin@corp.com",fav:true,color:4,fields:[
+      {l:"用户名",v:"admin@corp.com"},{l:"密码",secret:true,v:"Xk9#mP2$vL7qR4wZ"},{l:"网址",link:"https://console.aws.amazon.com"}],tags:["dev","cloud"]},
+    {type:"login",title:"招商银行",sub:"个人网银",fav:false,color:1,fields:[
+      {l:"用户名",v:"6225 **** **** 8821"},{l:"密码",secret:true,v:"Cmb@Finance2024"},{l:"网址",link:"https://www.cmbchina.com"}],tags:["finance"]},
+    {type:"api",title:"Stripe Secret Key",sub:"sk_live_••••9aBc",fav:false,color:2,fields:[
+      {l:"Key 名称",v:"live-secret"},{l:"Secret",secret:true,v:"sk_live_••••••••••••9aBc"},{l:"服务",link:"https://dashboard.stripe.com"}],tags:["finance","dev"]},
+    {type:"login",title:"Google",sub:"personal@gmail.com",fav:true,color:5,fields:[
+      {l:"用户名",v:"personal@gmail.com"},{l:"密码",secret:true,v:"G00gl#Pass!2024"},{l:"网址",link:"https://accounts.google.com"}],tags:["personal"]},
+    {type:"note",title:"服务器 SSH 恢复码",sub:"安全笔记",fav:false,color:2,fields:[
+      {l:"正文",note:true,v:"root 恢复码：8f3a-91c2-77be-4d10\n备用节点：10.0.3.42\n注意：更换后请同步更新此条。"}],tags:["dev","infra"]},
+    {type:"login",title:"Figma",sub:"me@example.com",fav:false,color:3,fields:[
+      {l:"用户名",v:"me@example.com"},{l:"密码",secret:true,v:"Figm@Design99"},{l:"网址",link:"https://figma.com"}],tags:["design"]},
+  ];
+  const typeIcon={
+    login:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>',
+    api:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 11-7 7 5 5 0 017-7zm0 0L15 8"/></svg>',
+    note:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>'
+  };
+  function initials(t){const w=t.replace(/[^0-9A-Za-z\u4e00-\u9fa5 ]+/g," ").trim().split(" ").filter(Boolean);return (w.slice(0,2).map(x=>x[0]).join("")||"S").toUpperCase();}
+
+  let selected=0;
+  function renderList(){
+    const el=document.getElementById("itemList");
+    el.innerHTML=items.map((it,i)=>`
+      <div class="item ${i===selected?'active':''}" onclick="selectItem(${i})">
+        <div class="avatar" style="background:${COLORS[it.color]}">${initials(it.title)}</div>
+        <div class="meta"><div class="t">${it.title}</div><div class="s">${it.sub}</div></div>
+        <span class="star ${it.fav?'on':''}"><svg width="15" height="15" viewBox="0 0 24 24" fill="${it.fav?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg></span>
+      </div>`).join("");
+  }
+  function mask(v){return "•".repeat(Math.min(v.length,18));}
+  function renderDetail(){
+    const it=items[selected];
+    const body=it.fields.map(f=>{
+      if(f.secret){
+        return `<div class="field-row"><div class="field-label">${f.l}</div>
+          <div class="secret-box"><span class="secret-val masked" data-real="${f.v}">${mask(f.v)}</span>
+          <div class="mini-btn" title="显示/隐藏" onclick="toggleSecret(this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <div class="mini-btn" title="复制（30s后自动清除）" onclick="copySecret(this,'${f.v.replace(/'/g,"\\'")}')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></div>
+          </div></div>`;
+      }
+      if(f.note){return `<div class="field-row"><div class="field-label">${f.l}</div><div class="note-text">${f.v.replace(/\n/g,"<br>")}</div></div>`;}
+      if(f.totp){return `<div class="field-row"><div class="field-label">${f.l}</div><div class="secret-box"><span class="secret-val" style="font-size:20px;letter-spacing:3px;color:var(--accent)">${f.v}</span><span style="font-size:11px;color:var(--text-faint)">18s 后刷新</span></div></div>`;}
+      if(f.link){return `<div class="field-row"><div class="field-label">${f.l}</div><div class="plain-val"><a>${f.v}</a></div></div>`;}
+      return `<div class="field-row"><div class="field-label">${f.l}</div>
+        <div class="secret-box"><span class="secret-val" style="font-family:var(--sans);letter-spacing:0">${f.v}</span>
+        <div class="mini-btn" title="复制" onclick="copySecret(this,'${f.v.replace(/'/g,"\\'")}')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></div>
+        </div></div>`;
+    }).join("");
+    document.getElementById("detail").innerHTML=`
+      <div class="detail-head fade-in">
+        <div class="avatar" style="background:${COLORS[it.color]}">${initials(it.title)}</div>
+        <div><div class="detail-title">${it.title}</div><div class="detail-sub">${typeLabel(it.type)} · 更新于 2 小时前</div></div>
+        <div class="detail-actions">
+          <div class="icon-btn" title="编辑" onclick="go('new')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z"/></svg></div>
+          <div class="icon-btn danger" title="删除"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></div>
+        </div>
+      </div>
+      <div class="detail-body fade-in">
+        ${body}
+        <div class="field-row"><div class="field-label">标签</div><div class="tag-chips">${it.tags.map(t=>`<span class="chip">#${t}</span>`).join("")}</div></div>
+      </div>`;
+  }
+  function typeLabel(t){return {login:"登录密码",api:"API Key / Secret",note:"安全笔记"}[t];}
+  function selectItem(i){selected=i;renderList();renderDetail();}
+  function toggleSecret(btn){
+    const span=btn.parentElement.querySelector(".secret-val");
+    if(span.classList.contains("masked")){span.textContent=span.dataset.real;span.classList.remove("masked");}
+    else{span.textContent=mask(span.dataset.real);span.classList.add("masked");}
+  }
+  function copySecret(btn,val){
+    if(navigator.clipboard)navigator.clipboard.writeText(val).catch(()=>{});
+    const old=btn.innerHTML;btn.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>';
+    setTimeout(()=>btn.innerHTML=old,1200);
+  }
+  function pickConflict(el){el.parentElement.querySelectorAll(".conflict-col").forEach(c=>c.classList.remove("sel"));el.classList.add("sel");}
+
+  // ---- screen switcher ----
+  function go(id){
+    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+    document.querySelectorAll(".switcher button").forEach(b=>b.classList.toggle("active",b.dataset.s===id));
+    if(id==="app"){renderList();renderDetail();}
+  }
+  document.querySelectorAll(".switcher button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.s)));
+  renderList();renderDetail();
+</script>
+</body>
+</html>

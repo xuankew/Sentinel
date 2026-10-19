@@ -1,0 +1,353 @@
+import { createSignal, onMount, Show, For } from "solid-js";
+import { api, Settings, Accent, Density } from "../lib/api";
+import { applyAppearance } from "../lib/theme";
+import { XIcon, GearIcon, DownloadIcon, FingerprintIcon, CheckIcon } from "./icons";
+
+interface Props {
+  onClose: () => void;
+  onToast: (msg: string) => void;
+  onSettings: (s: Settings) => void;
+}
+
+const ACCENTS: { key: Accent; label: string; swatch: string }[] = [
+  { key: "teal", label: "青", swatch: "linear-gradient(135deg,#4fd1c5,#3b82f6)" },
+  { key: "blue", label: "蓝", swatch: "linear-gradient(135deg,#60a5fa,#818cf8)" },
+  { key: "violet", label: "紫", swatch: "linear-gradient(135deg,#a78bfa,#c084fc)" },
+  { key: "amber", label: "琥珀", swatch: "linear-gradient(135deg,#fbbf24,#f59e0b)" },
+  { key: "rose", label: "玫红", swatch: "linear-gradient(135deg,#fb7185,#f472b6)" },
+  { key: "green", label: "绿", swatch: "linear-gradient(135deg,#4ade80,#22d3ee)" },
+];
+
+const DENSITIES: { key: Density; label: string }[] = [
+  { key: "comfortable", label: "舒适" },
+  { key: "compact", label: "紧凑" },
+];
+
+const LOCK_OPTIONS = [0, 1, 5, 15, 30, 60];
+
+export default function SettingsPanel(props: Props) {
+  const [settings, setSettings] = createSignal<Settings | null>(null);
+  const [error, setError] = createSignal("");
+  const [saving, setSaving] = createSignal(false);
+
+  // 导出
+  const [exportOpen, setExportOpen] = createSignal(false);
+  const [exportPw, setExportPw] = createSignal("");
+  const [exportBusy, setExportBusy] = createSignal(false);
+  const [exportErr, setExportErr] = createSignal("");
+
+  // Touch ID
+  const [touchAvailable, setTouchAvailable] = createSignal(false);
+  const [touchOn, setTouchOn] = createSignal(false);
+  const [touchPw, setTouchPw] = createSignal("");
+  const [touchAsk, setTouchAsk] = createSignal(false);
+  const [touchBusy, setTouchBusy] = createSignal(false);
+  const [touchErr, setTouchErr] = createSignal("");
+
+  onMount(async () => {
+    try {
+      const s = await api.getSettings();
+      setSettings(s);
+      // 以钥匙串实际状态为准（而非 settings.json 标记），避免与解锁页显示不一致。
+      const [avail, enabled] = await Promise.all([
+        api.touchIdAvailable().catch(() => false),
+        api.touchIdEnabled().catch(() => false),
+      ]);
+      setTouchAvailable(avail);
+      setTouchOn(enabled);
+    } catch (e) {
+      setError(String(e));
+    }
+  });
+
+  function patch(p: Partial<Settings>) {
+    setSettings((s) => (s ? { ...s, ...p } : s));
+  }
+
+  // 外观即时预览（不等待保存）
+  function pickAccent(a: Accent) {
+    patch({ accent: a });
+    applyAppearance(a, settings()?.density ?? "comfortable");
+  }
+  function pickDensity(d: Density) {
+    patch({ density: d });
+    applyAppearance(settings()?.accent ?? "teal", d);
+  }
+
+  async function save() {
+    const s = settings();
+    if (!s) return;
+    setError("");
+    setSaving(true);
+    try {
+      const saved = await api.saveSettings(s);
+      setSettings(saved);
+      applyAppearance(saved.accent, saved.density);
+      props.onSettings(saved);
+      props.onToast("设置已保存");
+      props.onClose();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function doExport() {
+    if (!exportPw()) return setExportErr("请输入导出密码");
+    setExportErr("");
+    setExportBusy(true);
+    try {
+      const path = await api.exportVault(exportPw());
+      setExportBusy(false);
+      if (path) {
+        setExportOpen(false);
+        setExportPw("");
+        props.onToast("已加密导出");
+      }
+    } catch (e) {
+      setExportErr(String(e));
+      setExportBusy(false);
+    }
+  }
+
+  async function toggleTouch() {
+    setTouchErr("");
+    if (touchOn()) {
+      // 关闭
+      setTouchBusy(true);
+      try {
+        await api.disableTouchId();
+        setTouchOn(false);
+        patch({ touch_id_enabled: false });
+        props.onToast("已关闭 Touch ID");
+      } catch (e) {
+        setTouchErr(String(e));
+      } finally {
+        setTouchBusy(false);
+      }
+      return;
+    }
+    // 开启需要主密码写入钥匙串
+    setTouchAsk(true);
+  }
+
+  async function confirmEnableTouch() {
+    if (!touchPw()) return setTouchErr("请输入主密码");
+    setTouchErr("");
+    setTouchBusy(true);
+    try {
+      await api.enableTouchId(touchPw());
+      setTouchOn(true);
+      setTouchAsk(false);
+      setTouchPw("");
+      patch({ touch_id_enabled: true });
+      props.onToast("已开启 Touch ID 解锁");
+    } catch (e) {
+      setTouchErr(String(e));
+    } finally {
+      setTouchBusy(false);
+    }
+  }
+
+  return (
+    <div class="modal-backdrop" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
+      <div class="modal">
+        <div class="modal-head">
+          <h3>
+            <span style={{ display: "inline-flex", "vertical-align": "-3px", "margin-right": "8px", color: "var(--accent)" }}>
+              <GearIcon size={18} />
+            </span>
+            设置
+          </h3>
+          <button class="icon-btn" onClick={props.onClose} title="关闭">
+            <XIcon size={17} />
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <Show when={settings()}>
+            {(s) => (
+              <>
+                {/* 外观：强调色 */}
+                <div class="form-group">
+                  <label>强调色</label>
+                  <div class="accent-row">
+                    <For each={ACCENTS}>
+                      {(a) => (
+                        <button
+                          class="accent-swatch"
+                          classList={{ active: s().accent === a.key }}
+                          style={{ background: a.swatch }}
+                          title={a.label}
+                          onClick={() => pickAccent(a.key)}
+                        >
+                          <Show when={s().accent === a.key}>
+                            <CheckIcon size={15} />
+                          </Show>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
+
+                {/* 外观：密度 */}
+                <div class="form-group">
+                  <label>界面密度</label>
+                  <div class="seg-row">
+                    <For each={DENSITIES}>
+                      {(d) => (
+                        <button
+                          class="seg-btn"
+                          classList={{ active: s().density === d.key }}
+                          onClick={() => pickDensity(d.key)}
+                        >
+                          {d.label}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
+
+                {/* 自动锁定 */}
+                <div class="form-group">
+                  <label>自动锁定（无操作后）</label>
+                  <div class="seg-row">
+                    <For each={LOCK_OPTIONS}>
+                      {(m) => (
+                        <button
+                          class="seg-btn"
+                          classList={{ active: s().auto_lock_minutes === m }}
+                          onClick={() => patch({ auto_lock_minutes: m })}
+                        >
+                          {m === 0 ? "永不" : `${m} 分`}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
+
+                {/* Touch ID */}
+                <div class="form-group">
+                  <label>Touch ID 解锁</label>
+                  <div class="setting-line">
+                    <span class="sl-icon" style={{ color: touchOn() ? "var(--accent)" : "var(--text-faint)" }}>
+                      <FingerprintIcon size={20} />
+                    </span>
+                    <div class="sl-text">
+                      <div>用 Touch ID 解锁保险库</div>
+                      <div class="sl-sub">
+                        {touchAvailable()
+                          ? "主密码将存入受生物识别保护的钥匙串项"
+                          : "此设备未检测到可用的 Touch ID"}
+                      </div>
+                    </div>
+                    <button
+                      class="switch"
+                      classList={{ on: touchOn() }}
+                      disabled={!touchAvailable() || touchBusy()}
+                      onClick={toggleTouch}
+                      title={touchAvailable() ? "" : "设备不支持"}
+                    >
+                      <span class="knob" />
+                    </button>
+                  </div>
+
+                  <Show when={touchAsk()}>
+                    <div class="touch-ask">
+                      <input
+                        class="input"
+                        type="password"
+                        placeholder="输入主密码以启用"
+                        value={touchPw()}
+                        onInput={(e) => setTouchPw(e.currentTarget.value)}
+                        onKeyUp={(e) => e.key === "Enter" && confirmEnableTouch()}
+                      />
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button class="btn btn-ghost" onClick={() => { setTouchAsk(false); setTouchPw(""); setTouchErr(""); }} disabled={touchBusy()}>
+                          取消
+                        </button>
+                        <button class="btn btn-primary" onClick={confirmEnableTouch} disabled={touchBusy()}>
+                          {touchBusy() ? "启用中…" : "启用"}
+                        </button>
+                      </div>
+                    </div>
+                  </Show>
+                  <Show when={touchErr()}>
+                    <div class="form-error" style={{ "margin-top": "10px" }}>{touchErr()}</div>
+                  </Show>
+                </div>
+
+                {/* 导出 */}
+                <div class="form-group">
+                  <label>数据导出</label>
+                  <div class="setting-line">
+                    <span class="sl-icon" style={{ color: "var(--text-faint)" }}>
+                      <DownloadIcon size={20} />
+                    </span>
+                    <div class="sl-text">
+                      <div>加密导出备份</div>
+                      <div class="sl-sub">用独立导出密码重新加密为 .sentinel 文件，绝不含明文</div>
+                    </div>
+                    <button class="btn btn-ghost" onClick={() => { setExportOpen(true); setExportErr(""); }}>
+                      导出
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </Show>
+
+          <Show when={error()}>
+            <div class="form-error">{error()}</div>
+          </Show>
+        </div>
+
+        <div class="modal-foot">
+          <button class="btn btn-ghost" onClick={props.onClose}>
+            取消
+          </button>
+          <button class="btn btn-primary" onClick={save} disabled={saving() || !settings()}>
+            {saving() ? "保存中…" : "保存"}
+          </button>
+        </div>
+
+        {/* 导出密码子弹层 */}
+        <Show when={exportOpen()}>
+          <div class="modal-backdrop" style={{ "z-index": "70" }} onClick={(e) => e.target === e.currentTarget && setExportOpen(false)}>
+            <div class="modal" style={{ width: "380px" }}>
+              <div class="modal-head">
+                <h3>加密导出</h3>
+              </div>
+              <div class="modal-body">
+                <p style={{ "font-size": "12.5px", color: "var(--text-dim)", "line-height": "1.6", "margin-bottom": "14px" }}>
+                  设置一个<strong style={{ color: "var(--text)" }}>导出密码</strong>。导出的文件用它单独加密，
+                  与主密码无关，可安全地存到别处。
+                </p>
+                <input
+                  class="input"
+                  type="password"
+                  placeholder="导出密码"
+                  value={exportPw()}
+                  onInput={(e) => setExportPw(e.currentTarget.value)}
+                  onKeyUp={(e) => e.key === "Enter" && doExport()}
+                />
+                <Show when={exportErr()}>
+                  <div class="form-error" style={{ "margin-top": "12px" }}>{exportErr()}</div>
+                </Show>
+              </div>
+              <div class="modal-foot">
+                <button class="btn btn-ghost" onClick={() => setExportOpen(false)} disabled={exportBusy()}>
+                  取消
+                </button>
+                <button class="btn btn-primary" onClick={doExport} disabled={exportBusy()}>
+                  {exportBusy() ? "导出中…" : "选择位置并导出"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Show>
+      </div>
+    </div>
+  );
+}

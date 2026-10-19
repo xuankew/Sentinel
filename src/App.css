@@ -1,0 +1,321 @@
+:root {
+  --bg: #0a0e14;
+  --text: #e6edf3;
+  --text-dim: #8b98a5;
+  --text-faint: #5a6672;
+  --accent: #4fd1c5;
+  --accent-2: #3b82f6;
+  --accent-rgb: 79, 209, 197;
+  --grad: linear-gradient(135deg, var(--accent), var(--accent-2));
+  --stroke: rgba(255, 255, 255, 0.08);
+  --stroke-2: rgba(255, 255, 255, 0.14);
+  --panel: rgba(255, 255, 255, 0.035);
+  --panel-2: rgba(255, 255, 255, 0.07);
+  --warn: #f6ad55;
+  --danger: #f87171;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", Roboto, sans-serif;
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+/* ---- 强调色预设（M4 外观）---- */
+:root[data-accent="teal"] {
+  --accent: #4fd1c5;
+  --accent-2: #3b82f6;
+  --accent-rgb: 79, 209, 197;
+}
+:root[data-accent="blue"] {
+  --accent: #60a5fa;
+  --accent-2: #818cf8;
+  --accent-rgb: 96, 165, 250;
+}
+:root[data-accent="violet"] {
+  --accent: #a78bfa;
+  --accent-2: #c084fc;
+  --accent-rgb: 167, 139, 250;
+}
+:root[data-accent="amber"] {
+  --accent: #fbbf24;
+  --accent-2: #f59e0b;
+  --accent-rgb: 251, 191, 36;
+}
+:root[data-accent="rose"] {
+  --accent: #fb7185;
+  --accent-2: #f472b6;
+  --accent-rgb: 251, 113, 133;
+}
+:root[data-accent="green"] {
+  --accent: #4ade80;
+  --accent-2: #22d3ee;
+  --accent-rgb: 74, 222, 128;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+.splash {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ambient::before {
+  content: "";
+  position: absolute;
+  width: 760px;
+  height: 760px;
+  left: -220px;
+  top: -280px;
+  background: radial-gradient(circle, rgba(79, 209, 197, 0.15), transparent 62%);
+}
+.ambient::after {
+  content: "";
+  position: absolute;
+  width: 820px;
+  height: 820px;
+  right: -260px;
+  bottom: -340px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.15), transparent 62%);
+}
+
+.grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(circle at 50% 42%, #000 28%, transparent 76%);
+  mask-image: radial-gradient(circle at 50% 42%, #000 28%, transparent 76%);
+}
+
+.splash-card {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding: 12px;
+  animation: rise 0.5s ease;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.shield {
+  width: 92px;
+  height: 92px;
+  margin: 0 auto 24px;
+  border-radius: 26px;
+  background: var(--grad);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 14px 44px rgba(59, 130, 246, 0.4);
+  animation: pulse 3.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 14px 44px rgba(59, 130, 246, 0.34);
+  }
+  50% {
+    box-shadow: 0 14px 62px rgba(79, 209, 197, 0.52);
+  }
+}
+.shield svg {
+  width: 48px;
+  height: 48px;
+  stroke: #04121a;
+}
+
+.brand {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.brand span {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tagline {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  letter-spacing: 0.4px;
+}
+
+.milestone {
+  margin-top: 18px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.3px;
+}
+
+/* ---- M1 表单 ---- */
+.form {
+  margin-top: 26px;
+  width: 320px;
+  text-align: left;
+}
+.form-hint {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.field {
+  width: 100%;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 0 15px;
+  color: var(--text);
+  font-size: 14.5px;
+  font-family: var(--sans);
+  outline: none;
+  transition: 0.18s;
+  margin-bottom: 12px;
+}
+.field::placeholder {
+  color: var(--text-faint);
+}
+.field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12);
+}
+.strength {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--stroke);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.strength i {
+  display: block;
+  height: 100%;
+  background: var(--grad);
+  transition: width 0.25s ease;
+}
+.strength-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+.error {
+  font-size: 12px;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 9px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+}
+/* 落地页按钮：作用域限定在 .splash 内，避免 width:100% 泄漏到弹层按钮 */
+.splash .btn-primary {
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--grad);
+  color: #04121a;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--sans);
+  cursor: pointer;
+  transition: 0.18s;
+}
+.splash .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.splash .btn-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.splash .btn-touch {
+  width: 100%;
+  height: 46px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  background: rgba(var(--accent-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: var(--sans);
+  cursor: pointer;
+  transition: 0.18s;
+}
+.splash .btn-touch:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.16);
+}
+.splash .btn-touch:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.unlocked-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+.unlocked-badge .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #28c840;
+  box-shadow: 0 0 8px #28c840;
+}
+.foot-note {
+  margin-top: 22px;
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.3px;
+}
