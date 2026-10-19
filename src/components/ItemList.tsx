@@ -13,6 +13,7 @@ interface Props {
   syncConfigured: boolean;
   onSync: () => void;
   onOpenSyncSettings: () => void;
+  registerSearch?: (el: HTMLInputElement) => void;
 }
 
 export default function ItemList(props: Props) {
@@ -22,11 +23,12 @@ export default function ItemList(props: Props) {
         <div class="search">
           <SearchIcon size={16} />
           <input
+            ref={(el) => props.registerSearch?.(el)}
             placeholder="搜索标题、用户名、网址…"
             value={props.query}
             onInput={(e) => props.setQuery(e.currentTarget.value)}
           />
-          <Show when={props.query}>
+          <Show when={props.query} fallback={<span class="kbd search-kbd">⌘K</span>}>
             <button class="kbd" style={{ border: "0", cursor: "pointer" }} onClick={() => props.setQuery("")}>
               ✕
             </button>

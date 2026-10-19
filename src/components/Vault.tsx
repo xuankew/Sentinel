@@ -123,6 +123,96 @@ export default function Vault(props: Props) {
     }, mins * 60_000);
   }
 
+  onCleanup(() => {
+    clearTimeout(idleTimer);
+    clearInterval(autoSyncTimer);
+    ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, bumpActivity));
+    window.removeEventListener("keydown", onGlobalKey);
+  });
+
+  // ---- 全局键盘快捷键 ----
+  let searchEl: HTMLInputElement | undefined;
+
+  // 选中条目的「主密钥」：登录→密码，API Key→Secret，笔记无主密钥。
+  function primarySecret(it: Item | null): { value: string; label: string } | null {
+    if (!it) return null;
+    if (it.kind.type === "login" && it.kind.password) return { value: it.kind.password, label: "密码" };
+    if (it.kind.type === "api_key" && it.kind.secret) return { value: it.kind.secret, label: "Secret" };
+    return null;
+  }
+
+  function anyModalOpen() {
+    return editorOpen() || confirmDel() !== null || conflicts() !== null || syncOpen() || settingsOpen();
+  }
+  function inEditable() {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+  }
+  function hasTextSelection() {
+    const sel = window.getSelection();
+    return !!sel && sel.toString().length > 0;
+  }
+
+  async function onGlobalKey(e: KeyboardEvent) {
+    // Esc：关闭最上层弹层；无弹层时清空搜索。
+    if (e.key === "Escape") {
+      if (editorOpen()) {
+        setEditorOpen(false);
+      } else if (confirmDel()) {
+        setConfirmDel(null);
+      } else if (conflicts()) {
+        setConflicts(null);
+      } else if (settingsOpen()) {
+        setSettingsOpen(false);
+      } else if (syncOpen()) {
+        setSyncOpen(false);
+        refreshSyncState();
+      } else if (query()) {
+        setQuery("");
+      } else {
+        return;
+      }
+      e.preventDefault();
+      return;
+    }
+
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const key = e.key.toLowerCase();
+
+    // ⌘L 立即锁定：任何情况下都生效。
+    if (key === "l") {
+      e.preventDefault();
+      props.onLock();
+      return;
+    }
+
+    // 其余快捷键在弹层打开时不抢占。
+    if (anyModalOpen()) return;
+
+    if (key === "k" || key === "f") {
+      e.preventDefault();
+      searchEl?.focus();
+      searchEl?.select();
+      return;
+    }
+    if (key === "n") {
+      e.preventDefault();
+      openCreate();
+      return;
+    }
+    if (key === "c") {
+      // 有文本选区或焦点在输入控件时，放行原生复制。
+      if (inEditable() || hasTextSelection()) return;
+      const sec = primarySecret(selected());
+      if (!sec) return;
+      e.preventDefault();
+      await api.copySecret(sec.value);
+      showToast(`已复制${sec.label}，30 秒后自动清除`);
+    }
+  }
+
   onMount(async () => {
     reload();
     refreshSyncState();
@@ -134,14 +224,10 @@ export default function Vault(props: Props) {
       /* 用默认外观 */
     }
     ACTIVITY_EVENTS.forEach((e) => window.addEventListener(e, bumpActivity, { passive: true }));
+    window.addEventListener("keydown", onGlobalKey);
     armIdle();
   });
 
-  onCleanup(() => {
-    clearTimeout(idleTimer);
-    clearInterval(autoSyncTimer);
-    ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, bumpActivity));
-  });
 
   function onSettingsSaved(s: Settings) {
     setSettings(s);
@@ -239,6 +325,7 @@ export default function Vault(props: Props) {
         syncConfigured={syncConfigured()}
         onSync={() => doSync(false)}
         onOpenSyncSettings={() => setSyncOpen(true)}
+        registerSearch={(el) => (searchEl = el)}
       />
 
       <ItemDetail item={selected()} onEdit={openEdit} onDelete={setConfirmDel} onToast={showToast} />

@@ -141,6 +141,14 @@
   padding: 1px 6px;
   font-family: var(--mono);
 }
+.search-kbd {
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.75;
+}
+.search:focus-within .search-kbd {
+  opacity: 0;
+}
 .list-head {
   display: flex;
   align-items: center;
