@@ -175,3 +175,12 @@ export const PaletteIcon = (p: P) => (
     <circle cx="14.5" cy="7.5" r="1" fill="currentColor" />
   </Svg>
 );
+export const QrIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 8V5.5A1.5 1.5 0 015.5 4H8M16 4h2.5A1.5 1.5 0 0120 5.5V8M20 16v2.5a1.5 1.5 0 01-1.5 1.5H16M8 20H5.5A1.5 1.5 0 014 18.5V16" />
+    <rect x="7.5" y="7.5" width="3" height="3" rx="0.5" />
+    <rect x="13.5" y="7.5" width="3" height="3" rx="0.5" />
+    <rect x="7.5" y="13.5" width="3" height="3" rx="0.5" />
+    <path d="M13.5 13.5h1.5v1.5h-1.5zM16.5 16.5H18v-1.5" />
+  </Svg>
+);

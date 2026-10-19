@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js";
+import jsQR from "jsqr";
 import { Item, ItemDraft, ItemKind } from "../lib/api";
-import { XIcon, RefreshIcon, EyeIcon, EyeOffIcon } from "./icons";
+import { XIcon, RefreshIcon, EyeIcon, EyeOffIcon, QrIcon } from "./icons";
 
 interface Props {
   initial: Item | null; // null = 新建
@@ -50,6 +51,30 @@ function kindHasContent(k: ItemKind): boolean {
   return !!anyK.body;
 }
 
+// 从图片文件本地解码二维码，返回其中的文本（通常是 otpauth:// 链接）。
+// 全程在 WebView 内用 canvas + jsQR 完成，不上传、不申请屏幕录制权限。
+async function decodeQrFromFile(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("请选择图片文件");
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) throw new Error("无法读取图片数据");
+    ctx.drawImage(bitmap, 0, 0);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, {
+      inversionAttempts: "attemptBoth",
+    });
+    const text = code?.data?.trim();
+    if (!text) throw new Error("未在图片中识别到二维码，请确保截图清晰完整");
+    return text;
+  } finally {
+    bitmap.close();
+  }
+}
+
 export default function ItemEditor(props: Props) {
   const init = props.initial;
   const [kindType, setKindType] = createSignal<KindType>(
@@ -67,6 +92,32 @@ export default function ItemEditor(props: Props) {
   const [showTotp, setShowTotp] = createSignal(false);
   // 切换类型时若已填内容，先挂起等确认，避免误清
   const [pendingType, setPendingType] = createSignal<KindType | null>(null);
+  // 二维码识别：状态提示 + 隐藏文件选择器
+  const [qrBusy, setQrBusy] = createSignal(false);
+  const [qrMsg, setQrMsg] = createSignal("");
+  const [qrErr, setQrErr] = createSignal(false);
+  const [qrOver, setQrOver] = createSignal(false);
+  let qrFileInput!: HTMLInputElement;
+
+  async function handleQrFile(file: File | undefined) {
+    if (!file) return;
+    setQrBusy(true);
+    setQrMsg("");
+    setQrErr(false);
+    try {
+      const text = await decodeQrFromFile(file);
+      patch({ totp: text });
+      setQrErr(false);
+      setQrMsg("已识别二维码并填入 TOTP 密钥");
+    } catch (e) {
+      setQrErr(true);
+      setQrMsg(String(e));
+    } finally {
+      setQrBusy(false);
+      // 清空以便同一文件可再次选择触发 change
+      if (qrFileInput) qrFileInput.value = "";
+    }
+  }
 
   function applySwitch(t: KindType) {
     setKindType(t);
@@ -198,7 +249,20 @@ export default function ItemEditor(props: Props) {
               <label>网址</label>
               <input class="input" value={k().url} placeholder="https://" onInput={(e) => patch({ url: e.currentTarget.value })} />
             </div>
-            <div class="form-group">
+            <div
+              class="form-group qr-drop"
+              classList={{ "qr-dragover": qrOver() }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setQrOver(true);
+              }}
+              onDragLeave={() => setQrOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setQrOver(false);
+                handleQrFile(e.dataTransfer?.files?.[0]);
+              }}
+            >
               <label>TOTP 密钥（可选，用于两步验证）</label>
               <div class="gen-row">
                 <input
@@ -215,7 +279,30 @@ export default function ItemEditor(props: Props) {
                 >
                   {showTotp() ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
                 </button>
+                <button
+                  class="btn btn-ghost"
+                  title="从二维码图片识别（选择或拖入截图，本地解码，不上传）"
+                  disabled={qrBusy()}
+                  onClick={() => qrFileInput?.click()}
+                >
+                  <QrIcon size={16} />
+                </button>
+                <input
+                  ref={qrFileInput}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={(e) => handleQrFile(e.currentTarget.files?.[0])}
+                />
               </div>
+              <Show when={qrBusy()}>
+                <div class="form-sub">正在识别二维码…</div>
+              </Show>
+              <Show when={!qrBusy() && qrMsg()}>
+                <div class="form-sub" classList={{ "form-sub-err": qrErr() }}>
+                  {qrMsg()}
+                </div>
+              </Show>
             </div>
           </Show>
 

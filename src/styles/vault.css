@@ -944,6 +944,17 @@ textarea.input {
   margin-top: 6px;
   line-height: 1.4;
 }
+.form-sub-err {
+  color: var(--danger);
+}
+.qr-drop {
+  position: relative;
+  border-radius: 8px;
+  transition: box-shadow 0.12s ease;
+}
+.qr-dragover {
+  box-shadow: 0 0 0 2px var(--accent);
+}
 .switch {
   flex: 0 0 auto;
   width: 44px;
