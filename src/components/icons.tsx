@@ -160,6 +160,12 @@ export const DownloadIcon = (p: P) => (
     <path d="M4 20h16" />
   </Svg>
 );
+export const UploadIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 16V4M7 9l5-5 5 5" />
+    <path d="M4 20h16" />
+  </Svg>
+);
 export const FingerprintIcon = (p: P) => (
   <Svg {...p}>
     <path d="M12 4a8 8 0 00-8 8v1M20 12a8 8 0 00-3-6.2" />

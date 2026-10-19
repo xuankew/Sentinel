@@ -1,12 +1,13 @@
 import { createSignal, onMount, Show, For } from "solid-js";
-import { api, Settings, Accent, Density } from "../lib/api";
+import { api, Settings, Accent, Density, ImportSummary } from "../lib/api";
 import { applyAppearance } from "../lib/theme";
-import { XIcon, GearIcon, DownloadIcon, FingerprintIcon, CheckIcon, KeyIcon } from "./icons";
+import { XIcon, GearIcon, DownloadIcon, UploadIcon, FingerprintIcon, CheckIcon, KeyIcon } from "./icons";
 
 interface Props {
   onClose: () => void;
   onToast: (msg: string) => void;
   onSettings: (s: Settings) => void;
+  onChanged?: () => void;
 }
 
 const ACCENTS: { key: Accent; label: string; swatch: string }[] = [
@@ -36,6 +37,11 @@ export default function SettingsPanel(props: Props) {
   const [exportPw, setExportPw] = createSignal("");
   const [exportBusy, setExportBusy] = createSignal(false);
   const [exportErr, setExportErr] = createSignal("");
+
+  // 导入（CSV）
+  const [importBusy, setImportBusy] = createSignal(false);
+  const [importErr, setImportErr] = createSignal("");
+  const [importResult, setImportResult] = createSignal<ImportSummary | null>(null);
 
   // Touch ID
   const [touchAvailable, setTouchAvailable] = createSignal(false);
@@ -123,6 +129,29 @@ export default function SettingsPanel(props: Props) {
     } catch (e) {
       setExportErr(String(e));
       setExportBusy(false);
+    }
+  }
+
+  async function doImport() {
+    setImportErr("");
+    setImportResult(null);
+    setImportBusy(true);
+    try {
+      const summary = await api.importCsv();
+      if (summary) {
+        setImportResult(summary);
+        if (summary.imported > 0) props.onChanged?.();
+        props.onToast(
+          summary.imported > 0
+            ? `已导入 ${summary.imported} 条`
+            : "没有新条目被导入",
+        );
+      }
+      // summary 为 null = 用户取消了文件选择，静默不提示
+    } catch (e) {
+      setImportErr(String(e));
+    } finally {
+      setImportBusy(false);
     }
   }
 
@@ -408,6 +437,41 @@ export default function SettingsPanel(props: Props) {
                       导出
                     </button>
                   </div>
+                </div>
+
+                {/* 导入 */}
+                <div class="form-group">
+                  <label>数据导入</label>
+                  <div class="setting-line">
+                    <span class="sl-icon" style={{ color: "var(--text-faint)" }}>
+                      <UploadIcon size={20} />
+                    </span>
+                    <div class="sl-text">
+                      <div>从 CSV 导入</div>
+                      <div class="sl-sub">支持 Chrome / 1Password / Bitwarden 等导出的 CSV，按表头自动识别列</div>
+                    </div>
+                    <button class="btn btn-ghost" onClick={doImport} disabled={importBusy()}>
+                      {importBusy() ? "导入中…" : "选择文件"}
+                    </button>
+                  </div>
+                  <div class="form-sub">
+                    与库中已有条目完全重复的行会自动跳过；源 CSV 为明文，导入后请安全删除。全程本地解析入库，不上传、不保留副本。
+                  </div>
+                  <Show when={importErr()}>
+                    <div class="form-error">{importErr()}</div>
+                  </Show>
+                  <Show when={importResult()}>
+                    {(r) => (
+                      <div class="form-sub">
+                        已导入 {r().imported} 条
+                        <Show when={r().skipped_duplicate > 0}>，跳过重复 {r().skipped_duplicate} 条</Show>
+                        <Show when={r().skipped_invalid > 0}>，跳过无效 {r().skipped_invalid} 条</Show>
+                        <Show when={r().notes_dropped > 0}>
+                          ，{r().notes_dropped} 条登录备注未导入（暂不支持备注字段）
+                        </Show>
+                      </div>
+                    )}
+                  </Show>
                 </div>
               </>
             )}

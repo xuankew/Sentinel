@@ -398,6 +398,7 @@ export default function Vault(props: Props) {
           onClose={() => setSettingsOpen(false)}
           onToast={showToast}
           onSettings={onSettingsSaved}
+          onChanged={() => reload()}
         />
       </Show>
 

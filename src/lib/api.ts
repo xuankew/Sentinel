@@ -83,6 +83,13 @@ export interface Settings {
   touch_id_enabled: boolean;
 }
 
+export interface ImportSummary {
+  imported: number;
+  skipped_duplicate: number;
+  skipped_invalid: number;
+  notes_dropped: number;
+}
+
 export const api = {
   vaultExists: () => invoke<boolean>("vault_exists"),
   createVault: (password: string, hint?: string) =>
@@ -114,6 +121,7 @@ export const api = {
   getRecoveryHint: () => invoke<string>("get_recovery_hint"),
   setRecoveryHint: (hint: string) => invoke<void>("set_recovery_hint", { hint }),
   exportVault: (password: string) => invoke<string | null>("export_vault", { password }),
+  importCsv: () => invoke<ImportSummary | null>("import_csv"),
 
   touchIdAvailable: () => invoke<boolean>("touch_id_available"),
   touchIdEnabled: () => invoke<boolean>("touch_id_enabled"),

@@ -307,6 +307,47 @@ pub fn delete_item(app: AppHandle, state: State<'_, AppState>, id: String) -> Re
     Ok(())
 }
 
+/// 从 CSV 导入条目（Chrome / 1Password / Bitwarden / 通用，表头驱动）。
+/// 弹文件框 → 读明文 CSV → 内存解析 + 去重 → 写入加密库并落盘。
+/// 源文件是用户自己的明文导出，这里不复制、不保留；取消选择返回 None。
+#[tauri::command]
+pub async fn import_csv(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<crate::import::ImportSummary>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("CSV 文件", &["csv", "txt"])
+        .blocking_pick_file();
+    let Some(path) = picked else { return Ok(None) };
+
+    let content =
+        std::fs::read_to_string(path.to_string()).map_err(|e| format!("读取文件失败：{e}"))?;
+
+    // 解析是纯 CPU 活，放 spawn_blocking 以免大文件卡住异步运行时（此刻未持会话锁）。
+    let parsed = tauri::async_runtime::spawn_blocking(move || crate::import::parse_csv(&content))
+        .await
+        .map_err(|e| e.to_string())??;
+
+    let mut guard = state.session.lock().unwrap();
+    let sess = guard.as_mut().ok_or("保险库未解锁")?;
+    let (kept, skipped_duplicate) = crate::import::dedup(parsed.drafts, &sess.data.items);
+    let imported = kept.len();
+    for d in kept {
+        sess.data.add(d);
+    }
+    persist(&app, sess)?;
+
+    Ok(Some(crate::import::ImportSummary {
+        imported,
+        skipped_duplicate,
+        skipped_invalid: parsed.skipped_invalid,
+        notes_dropped: parsed.notes_dropped,
+    }))
+}
+
 // ---------- 剪贴板（敏感字段复制后自动清除） ----------
 
 /// 复制敏感值到剪贴板；`clear_after` 秒后若剪贴板仍是该值则自动清除。

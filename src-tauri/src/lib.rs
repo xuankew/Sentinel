@@ -1,6 +1,7 @@
 // Sentinel — Tauri 后端入口。
 mod commands;
 mod crypto;
+mod import;
 mod merge;
 mod settings;
 mod state;
@@ -29,6 +30,7 @@ pub fn run() {
             commands::create_item,
             commands::update_item,
             commands::delete_item,
+            commands::import_csv,
             commands::copy_secret,
             commands::generate_totp,
             commands::get_sync_config,
