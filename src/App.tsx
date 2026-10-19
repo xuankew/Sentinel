@@ -11,6 +11,8 @@ function App() {
   const [mode, setMode] = createSignal<Mode>("loading");
   const [pw, setPw] = createSignal("");
   const [pw2, setPw2] = createSignal("");
+  const [hint, setHint] = createSignal("");
+  const [hintView, setHintView] = createSignal<string | null>(null);
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [touchReady, setTouchReady] = createSignal(false);
@@ -55,10 +57,11 @@ function App() {
     }
     setBusy(true);
     try {
-      if (mode() === "create") await api.createVault(pw());
+      if (mode() === "create") await api.createVault(pw(), hint());
       else await api.unlock(pw());
       setPw("");
       setPw2("");
+      setHint("");
       setMode("unlocked");
     } catch (e) {
       setError(String(e));
@@ -84,6 +87,16 @@ function App() {
       setError(String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function toggleHint() {
+    if (hintView() !== null) return setHintView(null);
+    try {
+      const h = await api.getRecoveryHint();
+      setHintView(h ? h : "（创建时未设置恢复提示）");
+    } catch {
+      setHintView("（无法读取恢复提示）");
     }
   }
 
@@ -141,6 +154,14 @@ function App() {
                     onInput={(e) => setPw2(e.currentTarget.value)}
                     onKeyUp={(e) => e.key === "Enter" && submit()}
                   />
+                  <input
+                    class="field"
+                    type="text"
+                    placeholder="恢复提示（可选）· 一句帮你回忆主密码的话，仅存本机"
+                    value={hint()}
+                    onInput={(e) => setHint(e.currentTarget.value)}
+                    onKeyUp={(e) => e.key === "Enter" && submit()}
+                  />
                 </Show>
                 <Show when={error()}>
                   <div class="error">{error()}</div>
@@ -153,6 +174,15 @@ function App() {
                     <FingerprintIcon />
                     <span>用 Touch ID 解锁</span>
                   </button>
+                </Show>
+
+                <Show when={mode() === "unlock"}>
+                  <button class="hint-link" onClick={toggleHint}>
+                    {hintView() !== null ? "收起恢复提示" : "忘记主密码？查看恢复提示"}
+                  </button>
+                  <Show when={hintView() !== null}>
+                    <div class="hint-box">{hintView()}</div>
+                  </Show>
                 </Show>
               </div>
             </Show>

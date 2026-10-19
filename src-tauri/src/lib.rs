@@ -39,6 +39,8 @@ pub fn run() {
             commands::cancel_sync,
             commands::get_settings,
             commands::save_settings,
+            commands::get_recovery_hint,
+            commands::set_recovery_hint,
             commands::export_vault,
             commands::touch_id_available,
             commands::touch_id_enabled,

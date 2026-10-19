@@ -52,17 +52,23 @@ export default function SettingsPanel(props: Props) {
   const [pwBusy, setPwBusy] = createSignal(false);
   const [pwErr, setPwErr] = createSignal("");
 
+  // 恢复提示
+  const [hintVal, setHintVal] = createSignal("");
+  const [hintBusy, setHintBusy] = createSignal(false);
+
   onMount(async () => {
     try {
       const s = await api.getSettings();
       setSettings(s);
       // 以钥匙串实际状态为准（而非 settings.json 标记），避免与解锁页显示不一致。
-      const [avail, enabled] = await Promise.all([
+      const [avail, enabled, hint] = await Promise.all([
         api.touchIdAvailable().catch(() => false),
         api.touchIdEnabled().catch(() => false),
+        api.getRecoveryHint().catch(() => ""),
       ]);
       setTouchAvailable(avail);
       setTouchOn(enabled);
+      setHintVal(hint);
     } catch (e) {
       setError(String(e));
     }
@@ -186,6 +192,18 @@ export default function SettingsPanel(props: Props) {
       setPwErr(String(e));
     } finally {
       setPwBusy(false);
+    }
+  }
+
+  async function saveHint() {
+    setHintBusy(true);
+    try {
+      await api.setRecoveryHint(hintVal());
+      props.onToast("恢复提示已保存");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setHintBusy(false);
     }
   }
 
@@ -331,6 +349,27 @@ export default function SettingsPanel(props: Props) {
                     <button class="btn btn-ghost" onClick={openPwModal}>
                       修改
                     </button>
+                  </div>
+                </div>
+
+                {/* 恢复提示 */}
+                <div class="form-group">
+                  <label>恢复提示</label>
+                  <div class="hint-edit">
+                    <input
+                      class="input"
+                      type="text"
+                      placeholder="一句帮你回忆主密码的话（可选）"
+                      value={hintVal()}
+                      onInput={(e) => setHintVal(e.currentTarget.value)}
+                      onKeyUp={(e) => e.key === "Enter" && saveHint()}
+                    />
+                    <button class="btn btn-ghost" onClick={saveHint} disabled={hintBusy()}>
+                      {hintBusy() ? "保存中…" : "保存"}
+                    </button>
+                  </div>
+                  <div class="form-sub">
+                    明文仅存本机，用于解锁页帮主人回忆主密码；不加密、不随同步上云
                   </div>
                 </div>
 

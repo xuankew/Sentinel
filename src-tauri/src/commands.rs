@@ -17,6 +17,7 @@ const VAULT_FILE: &str = "vault.sentinel";
 const SYNC_CONFIG_FILE: &str = "sync.json";
 const BASE_FILE: &str = "base.sentinel";
 const SETTINGS_FILE: &str = "settings.json";
+const METADATA_FILE: &str = "metadata.json";
 const DEFAULT_CLIPBOARD_CLEAR_SECS: u64 = 30;
 
 fn vault_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -43,6 +44,32 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join(SETTINGS_FILE))
 }
 
+fn metadata_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join(METADATA_FILE))
+}
+
+/// 本地明文元数据。恢复提示按 PRD 明文存本地（只是给主人看的提示，不是密钥），不加密、不上云。
+#[derive(Serialize, Deserialize, Default)]
+struct Metadata {
+    #[serde(default)]
+    recovery_hint: String,
+}
+
+fn load_metadata(app: &AppHandle) -> Metadata {
+    let Ok(path) = metadata_path(app) else { return Metadata::default() };
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_metadata(app: &AppHandle, m: &Metadata) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(m).map_err(|e| e.to_string())?;
+    std::fs::write(metadata_path(app)?, json).map_err(|e| e.to_string())
+}
+
 /// 把当前会话的明文保险库重新加密并落盘（每次改动后调用）。
 fn persist(app: &AppHandle, sess: &Session) -> Result<(), String> {
     let bytes = vault::seal(&sess.data, &*sess.key, &sess.params, &sess.salt)?;
@@ -63,6 +90,7 @@ pub async fn create_vault(
     app: AppHandle,
     state: State<'_, AppState>,
     password: String,
+    hint: Option<String>,
 ) -> Result<usize, String> {
     let path = vault_path(&app)?;
     if path.exists() {
@@ -73,6 +101,9 @@ pub async fn create_vault(
         .await
         .map_err(|e| e.to_string())??;
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    if let Some(h) = hint.map(|h| h.trim().to_string()).filter(|h| !h.is_empty()) {
+        save_metadata(&app, &Metadata { recovery_hint: h })?;
+    }
     let count = opened.data.items.len();
     *state.session.lock().unwrap() = Some(Session {
         key: opened.key,
@@ -620,6 +651,29 @@ pub async fn resolve_sync(
 pub fn cancel_sync(state: State<'_, AppState>) -> Result<(), String> {
     *state.pending_sync.lock().unwrap() = None;
     Ok(())
+}
+
+// ---------- 恢复提示 ----------
+
+/// 读取恢复提示（明文本地元数据，锁定状态也可读，用于解锁页帮主人回忆主密码）。
+#[tauri::command]
+pub fn get_recovery_hint(app: AppHandle) -> Result<String, String> {
+    Ok(load_metadata(&app).recovery_hint)
+}
+
+/// 修改恢复提示；需已解锁（证明持有主密码后才可改写提示）。
+#[tauri::command]
+pub fn set_recovery_hint(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    hint: String,
+) -> Result<(), String> {
+    if state.session.lock().unwrap().is_none() {
+        return Err("保险库未解锁".into());
+    }
+    let mut m = load_metadata(&app);
+    m.recovery_hint = hint.trim().to_string();
+    save_metadata(&app, &m)
 }
 
 // ---------- 偏好设置 ----------

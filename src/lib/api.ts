@@ -83,7 +83,8 @@ export interface Settings {
 
 export const api = {
   vaultExists: () => invoke<boolean>("vault_exists"),
-  createVault: (password: string) => invoke<number>("create_vault", { password }),
+  createVault: (password: string, hint?: string) =>
+    invoke<number>("create_vault", { password, hint: hint ?? null }),
   unlock: (password: string) => invoke<number>("unlock", { password }),
   lock: () => invoke<void>("lock"),
   isUnlocked: () => invoke<boolean>("is_unlocked"),
@@ -108,6 +109,8 @@ export const api = {
 
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
+  getRecoveryHint: () => invoke<string>("get_recovery_hint"),
+  setRecoveryHint: (hint: string) => invoke<void>("set_recovery_hint", { hint }),
   exportVault: (password: string) => invoke<string | null>("export_vault", { password }),
 
   touchIdAvailable: () => invoke<boolean>("touch_id_available"),

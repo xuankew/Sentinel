@@ -149,6 +149,14 @@
 .search:focus-within .search-kbd {
   opacity: 0;
 }
+.hint-edit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.hint-edit .input {
+  flex: 1;
+}
 .list-head {
   display: flex;
   align-items: center;
@@ -928,6 +936,12 @@ textarea.input {
   font-size: 11px;
   color: var(--text-faint);
   margin-top: 3px;
+  line-height: 1.4;
+}
+.form-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 6px;
   line-height: 1.4;
 }
 .switch {
