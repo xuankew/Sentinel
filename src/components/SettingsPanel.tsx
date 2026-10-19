@@ -1,7 +1,7 @@
 import { createSignal, onMount, Show, For } from "solid-js";
 import { api, Settings, Accent, Density } from "../lib/api";
 import { applyAppearance } from "../lib/theme";
-import { XIcon, GearIcon, DownloadIcon, FingerprintIcon, CheckIcon } from "./icons";
+import { XIcon, GearIcon, DownloadIcon, FingerprintIcon, CheckIcon, KeyIcon } from "./icons";
 
 interface Props {
   onClose: () => void;
@@ -43,6 +43,14 @@ export default function SettingsPanel(props: Props) {
   const [touchAsk, setTouchAsk] = createSignal(false);
   const [touchBusy, setTouchBusy] = createSignal(false);
   const [touchErr, setTouchErr] = createSignal("");
+
+  // 修改主密码
+  const [pwOpen, setPwOpen] = createSignal(false);
+  const [pwOld, setPwOld] = createSignal("");
+  const [pwNew, setPwNew] = createSignal("");
+  const [pwConfirm, setPwConfirm] = createSignal("");
+  const [pwBusy, setPwBusy] = createSignal(false);
+  const [pwErr, setPwErr] = createSignal("");
 
   onMount(async () => {
     try {
@@ -147,6 +155,37 @@ export default function SettingsPanel(props: Props) {
       setTouchErr(String(e));
     } finally {
       setTouchBusy(false);
+    }
+  }
+
+  function openPwModal() {
+    setPwOld("");
+    setPwNew("");
+    setPwConfirm("");
+    setPwErr("");
+    setPwOpen(true);
+  }
+
+  async function doChangePassword() {
+    const o = pwOld();
+    const n = pwNew();
+    if (!o) return setPwErr("请输入原主密码");
+    if (n.length < 8) return setPwErr("新主密码至少 8 位");
+    if (n === o) return setPwErr("新主密码不能与原密码相同");
+    if (n !== pwConfirm()) return setPwErr("两次输入的新主密码不一致");
+    setPwErr("");
+    setPwBusy(true);
+    try {
+      await api.changeMasterPassword(o, n);
+      setPwOpen(false);
+      setPwOld("");
+      setPwNew("");
+      setPwConfirm("");
+      props.onToast("主密码已修改");
+    } catch (e) {
+      setPwErr(String(e));
+    } finally {
+      setPwBusy(false);
     }
   }
 
@@ -278,6 +317,23 @@ export default function SettingsPanel(props: Props) {
                   </Show>
                 </div>
 
+                {/* 修改主密码 */}
+                <div class="form-group">
+                  <label>安全</label>
+                  <div class="setting-line">
+                    <span class="sl-icon" style={{ color: "var(--text-faint)" }}>
+                      <KeyIcon size={20} />
+                    </span>
+                    <div class="sl-text">
+                      <div>修改主密码</div>
+                      <div class="sl-sub">用新密码重新加密整个保险库；已启用 Touch ID 会一并更新</div>
+                    </div>
+                    <button class="btn btn-ghost" onClick={openPwModal}>
+                      修改
+                    </button>
+                  </div>
+                </div>
+
                 {/* 导出 */}
                 <div class="form-group">
                   <label>数据导出</label>
@@ -342,6 +398,54 @@ export default function SettingsPanel(props: Props) {
                 </button>
                 <button class="btn btn-primary" onClick={doExport} disabled={exportBusy()}>
                   {exportBusy() ? "导出中…" : "选择位置并导出"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Show>
+
+        {/* 修改主密码子弹层 */}
+        <Show when={pwOpen()}>
+          <div class="modal-backdrop" style={{ "z-index": "70" }} onClick={(e) => e.target === e.currentTarget && !pwBusy() && setPwOpen(false)}>
+            <div class="modal" style={{ width: "400px" }}>
+              <div class="modal-head">
+                <h3>修改主密码</h3>
+              </div>
+              <div class="modal-body">
+                <p style={{ "font-size": "12.5px", color: "var(--text-dim)", "line-height": "1.6", "margin-bottom": "14px" }}>
+                  将用新密码<strong style={{ color: "var(--text)" }}>重新加密整个保险库</strong>。
+                  若已配置 GitHub 同步，请先确保各设备<strong style={{ color: "var(--text)" }}>已同步一致</strong>；
+                  修改后云端会一并轮换为新密码，其他设备需各自用新密码解锁并同样修改。
+                </p>
+                <div class="form-group">
+                  <label>原主密码</label>
+                  <input class="input" type="password" value={pwOld()} placeholder="当前主密码" onInput={(e) => setPwOld(e.currentTarget.value)} />
+                </div>
+                <div class="form-group">
+                  <label>新主密码（至少 8 位）</label>
+                  <input class="input" type="password" value={pwNew()} placeholder="新主密码" onInput={(e) => setPwNew(e.currentTarget.value)} />
+                </div>
+                <div class="form-group">
+                  <label>确认新主密码</label>
+                  <input
+                    class="input"
+                    type="password"
+                    value={pwConfirm()}
+                    placeholder="再次输入新主密码"
+                    onInput={(e) => setPwConfirm(e.currentTarget.value)}
+                    onKeyUp={(e) => e.key === "Enter" && doChangePassword()}
+                  />
+                </div>
+                <Show when={pwErr()}>
+                  <div class="form-error">{pwErr()}</div>
+                </Show>
+              </div>
+              <div class="modal-foot">
+                <button class="btn btn-ghost" onClick={() => setPwOpen(false)} disabled={pwBusy()}>
+                  取消
+                </button>
+                <button class="btn btn-primary" onClick={doChangePassword} disabled={pwBusy()}>
+                  {pwBusy() ? "重新加密中…" : "确认修改"}
                 </button>
               </div>
             </div>

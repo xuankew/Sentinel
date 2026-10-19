@@ -179,6 +179,26 @@ pub fn create(password: &str) -> Result<(OpenedVault, Vec<u8>), String> {
     Ok((OpenedVault { key, data, params, salt }, bytes))
 }
 
+/// 用**新主密码**重新加密既有明文保险库：生成全新随机 salt、派生新密钥、封盘。
+/// 返回新的会话材料（OpenedVault）与完整文件字节。用于「修改主密码」——
+/// 旧密钥/旧 salt 一律作废，密文整体重写（云端只经手密文，故也需同步重推）。
+pub fn reseal_with_password(
+    data: &VaultData,
+    new_password: &str,
+) -> Result<(OpenedVault, Vec<u8>), String> {
+    if new_password.is_empty() {
+        return Err("主密码不能为空".into());
+    }
+    let salt = crypto::random_bytes::<SALT_LEN>();
+    let params = KdfParams::default();
+    let key = crypto::derive_key(new_password, &salt, &params)?;
+    let bytes = seal(data, &key, &params, &salt)?;
+    Ok((
+        OpenedVault { key, data: data.clone(), params, salt },
+        bytes,
+    ))
+}
+
 /// 从文件字节 + 主密码解密打开保险库。密码错误或文件被改都会 Err。
 pub fn open(bytes: &[u8], password: &str) -> Result<OpenedVault, String> {
     let (params, salt) = decode_prefix(bytes)?;
@@ -399,5 +419,36 @@ mod tests {
         data.delete(&created.id).unwrap();
         assert!(data.items.is_empty());
         assert!(data.delete(&created.id).is_err());
+    }
+
+    /// 修改主密码：用新密码重封后，新密码可开、旧密码被拒、salt 更换、数据完整保留。
+    #[test]
+    fn reseal_with_new_password_rotates_key() {
+        let (opened, _old_bytes) = fast_create("old-pass-123");
+        let mut data = opened.data.clone();
+        data.items.push(Item {
+            id: "id-1".into(),
+            title: "GitHub".into(),
+            kind: ItemKind::Login {
+                username: "me@x.com".into(),
+                password: "s3cr3t!".into(),
+                url: "https://github.com".into(),
+                totp: None,
+            },
+            tags: vec!["dev".into()],
+            favorite: true,
+            created_at: 1,
+            updated_at: 2,
+        });
+
+        let (rotated, new_bytes) = reseal_with_password(&data, "new-pass-456").unwrap();
+        // 新 salt（密钥随之更换）
+        assert_ne!(rotated.salt, opened.salt, "重封应使用全新随机 salt");
+
+        // 新密码可打开且数据完整
+        let via_new = open(&new_bytes, "new-pass-456").unwrap();
+        assert_eq!(via_new.data, data);
+        // 旧密码被拒
+        assert!(open(&new_bytes, "old-pass-123").is_err(), "旧主密码应不再能解密");
     }
 }

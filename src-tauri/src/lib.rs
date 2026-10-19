@@ -24,6 +24,7 @@ pub fn run() {
             commands::unlock,
             commands::lock,
             commands::is_unlocked,
+            commands::change_master_password,
             commands::list_items,
             commands::create_item,
             commands::update_item,

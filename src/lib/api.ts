@@ -87,6 +87,8 @@ export const api = {
   unlock: (password: string) => invoke<number>("unlock", { password }),
   lock: () => invoke<void>("lock"),
   isUnlocked: () => invoke<boolean>("is_unlocked"),
+  changeMasterPassword: (oldPassword: string, newPassword: string) =>
+    invoke<void>("change_master_password", { oldPassword, newPassword }),
 
   listItems: () => invoke<Item[]>("list_items"),
   createItem: (draft: ItemDraft) => invoke<Item>("create_item", { draft }),

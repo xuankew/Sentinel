@@ -121,6 +121,116 @@ pub fn is_unlocked(state: State<'_, AppState>) -> bool {
     state.session.lock().unwrap().is_some()
 }
 
+/// 修改主密码：校验旧密码 → 用新密码（全新 salt）重新加密整库。
+///
+/// 方案 A（与云端同步联动）：若已配置同步，先拉取远端并要求**内容与本机一致**
+/// （不一致则拒绝，提示先同步），随后把新密码密文推送云端，使远端一并轮换。
+/// 本地文件仅在（如需）推送成功后才写入——推送失败则整体不改动，可安全重试，
+/// 避免出现「本地新密码 / 云端旧密码」导致后续同步解不开的死锁。
+/// 最后同步更新内存会话，并在 Touch ID 已启用时用新密码重写钥匙串项。
+#[tauri::command]
+pub async fn change_master_password(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    old_password: String,
+    new_password: String,
+) -> Result<(), String> {
+    if new_password.chars().count() < 8 {
+        return Err("新主密码至少 8 位".into());
+    }
+    if new_password == old_password {
+        return Err("新主密码不能与原密码相同".into());
+    }
+
+    // 校验旧密码，取出重封所需的会话材料
+    let (old_key, ours) = {
+        let guard = state.session.lock().unwrap();
+        let sess = guard.as_ref().ok_or("保险库未解锁")?;
+        if sess.password.as_str() != old_password {
+            return Err("原主密码不正确".into());
+        }
+        (sess.key.clone(), sess.data.items.clone())
+    };
+
+    // 用新密码重新派生 + 封盘（Argon2id 重活放阻塞线程池）
+    let data = VaultData { version: 1, items: ours.clone() };
+    let np = new_password.clone();
+    let (opened, new_bytes) = tauri::async_runtime::spawn_blocking(move || {
+        vault::reseal_with_password(&data, &np)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // 已配置同步 → 对齐检查 + 推送（在写本地文件之前完成，失败则本地不动）
+    let cfg = load_sync_config(&app)?;
+    let token = sync::get_token()?;
+    let remote_synced = cfg.is_complete() && token.is_some();
+    if let Some(token) = token.filter(|_| cfg.is_complete()) {
+        match sync::pull(&cfg, &token).await? {
+            Some(rf) => {
+                let bytes = rf.bytes.clone();
+                let op = old_password.clone();
+                let npc = new_password.clone();
+                // 远端可能是旧密码（本机首个轮换）或新密码（他机已轮换），两者都试
+                let theirs = tauri::async_runtime::spawn_blocking(move || {
+                    vault::open(&bytes, &op)
+                        .or_else(|_| vault::open(&bytes, &npc))
+                        .map(|o| o.data.items)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(|_| "无法解密云端保险库（新旧主密码都不匹配）".to_string())?;
+                if !merge::same_content(&theirs, &ours) {
+                    return Err("本机与云端数据不一致，请先完成同步后再修改主密码".into());
+                }
+                sync::push(&cfg, &token, &new_bytes, rf.sha.clone()).await?;
+            }
+            None => {
+                // 云端尚无文件：直接推送新密码库
+                sync::push(&cfg, &token, &new_bytes, None).await?;
+            }
+        }
+    }
+
+    // 写本地保险库
+    std::fs::write(vault_path(&app)?, &new_bytes).map_err(|e| e.to_string())?;
+
+    // 重封同步基线快照：用旧密钥读出内容，再用新密钥写回（保持基线语义）
+    if let Ok(bp) = base_path(&app) {
+        if bp.exists() {
+            if let Ok(base_bytes) = std::fs::read(&bp) {
+                if let Ok(base_data) = vault::open_with_key(&base_bytes, &old_key) {
+                    if let Ok(resealed) =
+                        vault::seal(&base_data, &opened.key, &opened.params, &opened.salt)
+                    {
+                        let _ = std::fs::write(&bp, resealed);
+                    }
+                }
+            }
+        } else if remote_synced {
+            let _ = std::fs::write(&bp, &new_bytes);
+        }
+    }
+
+    // 更新内存会话为新密钥材料（条目未变，data 保留）
+    {
+        let mut guard = state.session.lock().unwrap();
+        if let Some(sess) = guard.as_mut() {
+            sess.params = opened.params;
+            sess.salt = opened.salt;
+            sess.key = opened.key;
+            sess.password = Zeroizing::new(new_password.clone());
+        }
+    }
+
+    // Touch ID 已启用 → 用新密码重写受保护钥匙串项（尽力而为，失败不回滚已完成的轮换）
+    if crate::touchid::enabled() {
+        let _ = crate::touchid::store(&new_password);
+    }
+
+    Ok(())
+}
+
 // ---------- 条目 CRUD ----------
 
 #[tauri::command]
