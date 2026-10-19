@@ -89,6 +89,19 @@
   padding: 1px 7px;
   border-radius: 999px;
 }
+/* 标签区：数量可能较多，独立滚动，避免挤掉底部同步/设置/锁定入口 */
+.tag-list {
+  max-height: 30vh;
+  overflow-y: auto;
+  margin-bottom: 2px;
+}
+.tag-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .side-foot {
   margin-top: auto;
   border-top: 1px solid var(--stroke);

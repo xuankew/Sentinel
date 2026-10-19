@@ -16,6 +16,7 @@ interface Props {
 export default function Vault(props: Props) {
   const [items, setItems] = createSignal<Item[]>([]);
   const [filter, setFilter] = createSignal<Filter>("all");
+  const [selectedTag, setSelectedTag] = createSignal<string | null>(null);
   const [query, setQuery] = createSignal("");
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [editorOpen, setEditorOpen] = createSignal(false);
@@ -41,6 +42,9 @@ export default function Vault(props: Props) {
   async function reload(preferId?: string | null) {
     const list = await api.listItems();
     setItems(list);
+    // 若当前选中的标签已不存在于任何条目，取消标签筛选，避免空列表卡死。
+    const t = selectedTag();
+    if (t && !list.some((i) => i.tags.includes(t))) setSelectedTag(null);
     const target = preferId ?? selectedId();
     setSelectedId(target && list.some((i) => i.id === target) ? target : list[0]?.id ?? null);
   }
@@ -248,11 +252,31 @@ export default function Vault(props: Props) {
     } as Record<Filter, number>;
   });
 
+  // 侧栏「标签」区：全库去重标签 + 计数，按计数降序、同数按名称升序。
+  const tagList = createMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of items()) for (const t of i.tags) m.set(t, (m.get(t) ?? 0) + 1);
+    return [...m.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  });
+
+  // 视图/类型与标签互斥：选其一即清除另一。
+  function chooseFilter(f: Filter) {
+    setSelectedTag(null);
+    setFilter(f);
+  }
+  function toggleTag(t: string) {
+    setSelectedTag((cur) => (cur === t ? null : t));
+  }
+
   const visible = createMemo(() => {
     const q = query().trim().toLowerCase();
     const f = filter();
+    const tag = selectedTag();
     return items()
       .filter((i) => {
+        if (tag) return i.tags.includes(tag);
         if (f === "favorite") return i.favorite;
         if (f !== "all") return i.kind.type === f;
         return true;
@@ -307,8 +331,11 @@ export default function Vault(props: Props) {
     <div class="vault">
       <Sidebar
         filter={filter()}
-        setFilter={setFilter}
+        setFilter={chooseFilter}
         counts={counts()}
+        tags={tagList()}
+        selectedTag={selectedTag()}
+        onSelectTag={toggleTag}
         onLock={props.onLock}
         syncConfigured={syncConfigured()}
         lastSyncAt={lastSyncAt()}

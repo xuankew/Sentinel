@@ -1,5 +1,5 @@
-import { Show } from "solid-js";
-import { ShieldIcon, GridIcon, StarIcon, KeyIcon, NoteIcon, LockIcon, SyncIcon, GearIcon } from "./icons";
+import { For, Show } from "solid-js";
+import { ShieldIcon, GridIcon, StarIcon, KeyIcon, NoteIcon, LockIcon, SyncIcon, GearIcon, TagIcon } from "./icons";
 
 export type Filter = "all" | "favorite" | "login" | "api_key" | "note";
 
@@ -7,6 +7,9 @@ interface Props {
   filter: Filter;
   setFilter: (f: Filter) => void;
   counts: Record<Filter, number>;
+  tags: { name: string; count: number }[];
+  selectedTag: string | null;
+  onSelectTag: (t: string) => void;
   onLock: () => void;
   syncConfigured: boolean;
   lastSyncAt: number | null;
@@ -67,7 +70,7 @@ export default function Sidebar(props: Props) {
       {NAV.map((item) => (
         <NavBtn
           item={item}
-          active={props.filter === item.key}
+          active={!props.selectedTag && props.filter === item.key}
           count={props.counts[item.key]}
           onClick={() => props.setFilter(item.key)}
         />
@@ -77,11 +80,33 @@ export default function Sidebar(props: Props) {
       {TYPES.map((item) => (
         <NavBtn
           item={item}
-          active={props.filter === item.key}
+          active={!props.selectedTag && props.filter === item.key}
           count={props.counts[item.key]}
           onClick={() => props.setFilter(item.key)}
         />
       ))}
+
+      <Show when={props.tags.length > 0}>
+        <div class="nav-label">标签</div>
+        <div class="tag-list">
+          <For each={props.tags}>
+            {(t) => (
+              <button
+                class="nav-item"
+                classList={{ active: props.selectedTag === t.name }}
+                title={t.name}
+                onClick={() => props.onSelectTag(t.name)}
+              >
+                <span class="nic">
+                  <TagIcon size={16} />
+                </span>
+                <span class="tag-name">{t.name}</span>
+                <span class="count">{t.count}</span>
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
 
       <div class="side-foot">
         <button
