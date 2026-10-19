@@ -36,8 +36,8 @@ function genPassword(len = 20): string {
 }
 
 function emptyKind(t: KindType): ItemKind {
-  if (t === "login") return { type: "login", username: "", password: "", url: "", totp: null };
-  if (t === "api_key") return { type: "api_key", key_name: "", secret: "", url: "" };
+  if (t === "login") return { type: "login", username: "", password: "", url: "", totp: null, notes: "" };
+  if (t === "api_key") return { type: "api_key", key_name: "", secret: "", url: "", notes: "" };
   return { type: "note", body: "" };
 }
 
@@ -45,9 +45,9 @@ function emptyKind(t: KindType): ItemKind {
 function kindHasContent(k: ItemKind): boolean {
   const anyK = k as any;
   if (k.type === "login")
-    return !!(anyK.username || anyK.password || anyK.url || anyK.totp);
+    return !!(anyK.username || anyK.password || anyK.url || anyK.totp || anyK.notes);
   if (k.type === "api_key")
-    return !!(anyK.key_name || anyK.secret || anyK.url);
+    return !!(anyK.key_name || anyK.secret || anyK.url || anyK.notes);
   return !!anyK.body;
 }
 
@@ -304,6 +304,16 @@ export default function ItemEditor(props: Props) {
                 </div>
               </Show>
             </div>
+            <div class="form-group">
+              <label>备注（可选）</label>
+              <textarea
+                class="input"
+                value={k().notes ?? ""}
+                rows={3}
+                placeholder="例如：备用邮箱、恢复信息、说明等"
+                onInput={(e) => patch({ notes: e.currentTarget.value })}
+              />
+            </div>
           </Show>
 
           <Show when={kindType() === "api_key"}>
@@ -339,6 +349,16 @@ export default function ItemEditor(props: Props) {
             <div class="form-group">
               <label>网址</label>
               <input class="input" value={k().url} placeholder="https://" onInput={(e) => patch({ url: e.currentTarget.value })} />
+            </div>
+            <div class="form-group">
+              <label>备注（可选）</label>
+              <textarea
+                class="input"
+                value={k().notes ?? ""}
+                rows={3}
+                placeholder="例如：用途、轮换周期、说明等"
+                onInput={(e) => patch({ notes: e.currentTarget.value })}
+              />
             </div>
           </Show>
 

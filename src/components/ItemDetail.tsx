@@ -168,6 +168,12 @@ function LoginBody(props: { k: Login; onToast: (m: string) => void }) {
       <Show when={props.k.totp} keyed>
         {(secret) => <TotpField secret={secret} onToast={props.onToast} />}
       </Show>
+      <Show when={props.k.notes}>
+        <div class="field-row">
+          <div class="field-label">备注</div>
+          <div class="note-text">{props.k.notes}</div>
+        </div>
+      </Show>
     </>
   );
 }
@@ -185,6 +191,12 @@ function ApiKeyBody(props: { k: ApiKey; onToast: (m: string) => void }) {
             <LinkIcon size={14} /> {props.k.url}
           </a>
         </PlainField>
+      </Show>
+      <Show when={props.k.notes}>
+        <div class="field-row">
+          <div class="field-label">备注</div>
+          <div class="note-text">{props.k.notes}</div>
+        </div>
       </Show>
     </>
   );

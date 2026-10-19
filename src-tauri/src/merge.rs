@@ -213,6 +213,7 @@ mod tests {
                 password: title.into(),
                 url: "".into(),
                 totp: None,
+                notes: String::new(),
             },
             tags: vec![],
             favorite: false,

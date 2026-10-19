@@ -14,8 +14,6 @@ pub struct ImportSummary {
     pub skipped_duplicate: usize,
     /// 空行或缺少可用字段（无账号/密码/网址/备注）而跳过。
     pub skipped_invalid: usize,
-    /// 登录条目携带的备注被丢弃的数量（Login 暂无备注字段，见 backlog #5）。
-    pub notes_dropped: usize,
 }
 
 /// CSV 中我们关心的列角色。
@@ -60,11 +58,10 @@ fn host_of(url: &str) -> String {
     after.split('/').next().unwrap_or(after).trim().to_string()
 }
 
-/// 解析结果：待入库草稿 + 解析阶段的计数（去重前的无效行/丢弃备注）。
+/// 解析结果：待入库草稿 + 解析阶段跳过的无效行数（去重前）。
 pub struct Parsed {
     pub drafts: Vec<ItemDraft>,
     pub skipped_invalid: usize,
-    pub notes_dropped: usize,
 }
 
 /// 解析 CSV 文本为 ItemDraft 列表。表头无法识别（无 title/username/password 任一列）时报错。
@@ -93,7 +90,6 @@ pub fn parse_csv(content: &str) -> Result<Parsed, String> {
 
     let mut drafts = Vec::new();
     let mut skipped_invalid = 0usize;
-    let mut notes_dropped = 0usize;
 
     for result in rdr.records() {
         let rec = result.map_err(|e| e.to_string())?;
@@ -137,9 +133,6 @@ pub fn parse_csv(content: &str) -> Result<Parsed, String> {
             continue;
         }
 
-        if !notes.is_empty() {
-            notes_dropped += 1;
-        }
         let title = if !title_raw.is_empty() {
             title_raw
         } else {
@@ -160,13 +153,14 @@ pub fn parse_csv(content: &str) -> Result<Parsed, String> {
                 password,
                 url,
                 totp: if totp.is_empty() { None } else { Some(totp) },
+                notes,
             },
             tags: vec![],
             favorite: false,
         });
     }
 
-    Ok(Parsed { drafts, skipped_invalid, notes_dropped })
+    Ok(Parsed { drafts, skipped_invalid })
 }
 
 /// 条目唯一键：同类且关键字段（含密码）全等视为重复。仅用于导入去重，非加密用途。
@@ -176,7 +170,7 @@ fn key_of(title: &str, kind: &ItemKind) -> String {
             format!("login|{}|{}|{}|{}", norm(title), norm(username), norm(password), norm(url))
         }
         ItemKind::Note { body } => format!("note|{}|{}", norm(title), norm(body)),
-        ItemKind::ApiKey { key_name, secret, url } => {
+        ItemKind::ApiKey { key_name, secret, url, .. } => {
             format!("api|{}|{}|{}|{}", norm(title), norm(key_name), norm(secret), norm(url))
         }
     }
@@ -210,7 +204,7 @@ mod tests {
             .drafts
             .iter()
             .filter_map(|d| match &d.kind {
-                ItemKind::Login { username, password, url, totp } => {
+                ItemKind::Login { username, password, url, totp, .. } => {
                     Some((username.as_str(), password.as_str(), url.as_str(), totp.as_deref()))
                 }
                 _ => None,
@@ -229,8 +223,11 @@ mod tests {
         let l = logins(&p);
         assert_eq!(l[0], ("alice", "hunter2", "https://github.com", None));
         assert_eq!(l[1], ("bob", "pass-w0rd", "https://aliyun.com", None));
-        // 第二行有备注但属登录条目 → 备注被丢弃并计数
-        assert_eq!(p.notes_dropped, 1);
+        // 第二行的备注写入 Login.notes（不再丢弃）
+        match &p.drafts[1].kind {
+            ItemKind::Login { notes, .. } => assert_eq!(notes, "remember to rotate"),
+            other => panic!("expected Login, got {:?}", other),
+        }
         assert_eq!(p.skipped_invalid, 0);
     }
 
@@ -258,7 +255,10 @@ mod tests {
         assert_eq!(p.drafts[0].title, "GitLab");
         let l = logins(&p);
         assert_eq!(l[0], ("carol", "p@ss", "https://gitlab.com", Some("JBSWY3DPEHPK3PXP")));
-        assert_eq!(p.notes_dropped, 1); // "hi"
+        match &p.drafts[0].kind {
+            ItemKind::Login { notes, .. } => assert_eq!(notes, "hi"),
+            other => panic!("expected Login, got {:?}", other),
+        }
     }
 
     #[test]
@@ -313,6 +313,7 @@ mod tests {
                 password: "hunter2".into(),
                 url: "https://github.com".into(),
                 totp: None,
+                notes: String::new(),
             },
             tags: vec![],
             favorite: false,
@@ -341,6 +342,7 @@ mod tests {
                 password: "old".into(),
                 url: "https://github.com".into(),
                 totp: None,
+                notes: String::new(),
             },
             tags: vec![],
             favorite: false,

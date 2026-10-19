@@ -466,9 +466,6 @@ export default function SettingsPanel(props: Props) {
                         已导入 {r().imported} 条
                         <Show when={r().skipped_duplicate > 0}>，跳过重复 {r().skipped_duplicate} 条</Show>
                         <Show when={r().skipped_invalid > 0}>，跳过无效 {r().skipped_invalid} 条</Show>
-                        <Show when={r().notes_dropped > 0}>
-                          ，{r().notes_dropped} 条登录备注未导入（暂不支持备注字段）
-                        </Show>
                       </div>
                     )}
                   </Show>

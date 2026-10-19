@@ -344,7 +344,6 @@ pub async fn import_csv(
         imported,
         skipped_duplicate,
         skipped_invalid: parsed.skipped_invalid,
-        notes_dropped: parsed.notes_dropped,
     }))
 }
 

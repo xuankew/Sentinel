@@ -22,12 +22,18 @@ pub enum ItemKind {
         url: String,
         #[serde(default)]
         totp: Option<String>,
+        /// 每条备注（自由文本）。旧库文件无此字段时默认为空。
+        #[serde(default)]
+        notes: String,
     },
     ApiKey {
         key_name: String,
         secret: String,
         #[serde(default)]
         url: String,
+        /// 每条备注（自由文本）。旧库文件无此字段时默认为空。
+        #[serde(default)]
+        notes: String,
     },
     Note {
         body: String,
@@ -280,6 +286,7 @@ mod tests {
                 password: "s3cr3t!".into(),
                 url: "https://github.com".into(),
                 totp: None,
+                notes: String::new(),
             },
             tags: vec!["dev".into()],
             favorite: true,
@@ -294,7 +301,51 @@ mod tests {
         assert_eq!(opened.data, data);
     }
 
-    /// 端到端：真实默认参数（64MiB Argon2id）+ 磁盘持久化 + 密文不泄露明文。
+    /// 向后兼容：旧版本保险库的 Login/ApiKey JSON 没有 notes 字段，
+    /// 反序列化时应默认为空串而非报错（serde default）。
+    #[test]
+    fn legacy_json_without_notes_deserializes() {
+        let legacy_login = r#"{"type":"login","username":"alice","password":"pw","url":"https://a.com","totp":null}"#;
+        let k: ItemKind = serde_json::from_str(legacy_login).unwrap();
+        match k {
+            ItemKind::Login { notes, .. } => assert_eq!(notes, ""),
+            other => panic!("expected Login, got {:?}", other),
+        }
+
+        let legacy_api = r#"{"type":"api_key","key_name":"prod","secret":"s","url":"https://x.com"}"#;
+        let k2: ItemKind = serde_json::from_str(legacy_api).unwrap();
+        match k2 {
+            ItemKind::ApiKey { notes, .. } => assert_eq!(notes, ""),
+            other => panic!("expected ApiKey, got {:?}", other),
+        }
+    }
+
+    /// notes 字段应随条目一起加密持久化并完整读回。
+    #[test]
+    fn notes_roundtrip_preserved() {
+        let mut data = VaultData::new();
+        data.add(ItemDraft {
+            title: "GitHub".into(),
+            kind: ItemKind::Login {
+                username: "me@x.com".into(),
+                password: "s3cr3t!".into(),
+                url: "https://github.com".into(),
+                totp: None,
+                notes: "备用邮箱 me2@x.com；2024-01 改过密码".into(),
+            },
+            tags: vec![],
+            favorite: false,
+        });
+        let salt = crypto::random_bytes::<SALT_LEN>();
+        let params = KdfParams { m_cost: 1 << 12, t_cost: 2, p_cost: 1 };
+        let key = crypto::derive_key("pw", &salt, &params).unwrap();
+        let bytes = seal(&data, &key, &params, &salt).unwrap();
+        let opened = open(&bytes, "pw").unwrap();
+        match &opened.data.items[0].kind {
+            ItemKind::Login { notes, .. } => assert_eq!(notes, "备用邮箱 me2@x.com；2024-01 改过密码"),
+            other => panic!("expected Login, got {:?}", other),
+        }
+    }
     #[test]
     fn e2e_real_params_file_persistence() {
         use std::io::{Read, Write};
@@ -340,6 +391,7 @@ mod tests {
                 key_name: "live".into(),
                 secret: secret_value.into(),
                 url: "https://stripe.com".into(),
+                notes: String::new(),
             },
             tags: vec!["finance".into()],
             favorite: true,
@@ -378,6 +430,7 @@ mod tests {
             password: "pw1".into(),
             url: "https://a.com".into(),
             totp: None,
+            notes: String::new(),
         };
         let created = data.add(ItemDraft {
             title: "A".into(),
@@ -434,6 +487,7 @@ mod tests {
                 password: "s3cr3t!".into(),
                 url: "https://github.com".into(),
                 totp: None,
+                notes: String::new(),
             },
             tags: vec!["dev".into()],
             favorite: true,

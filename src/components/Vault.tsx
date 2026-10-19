@@ -262,8 +262,8 @@ export default function Vault(props: Props) {
         const hay = [
           i.title,
           ...i.tags,
-          i.kind.type === "login" ? i.kind.username + " " + i.kind.url : "",
-          i.kind.type === "api_key" ? i.kind.key_name + " " + i.kind.url : "",
+          i.kind.type === "login" ? i.kind.username + " " + i.kind.url + " " + i.kind.notes : "",
+          i.kind.type === "api_key" ? i.kind.key_name + " " + i.kind.url + " " + i.kind.notes : "",
           i.kind.type === "note" ? i.kind.body : "",
         ]
           .join(" ")

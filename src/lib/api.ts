@@ -2,8 +2,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type ItemKind =
-  | { type: "login"; username: string; password: string; url: string; totp: string | null }
-  | { type: "api_key"; key_name: string; secret: string; url: string }
+  | { type: "login"; username: string; password: string; url: string; totp: string | null; notes: string }
+  | { type: "api_key"; key_name: string; secret: string; url: string; notes: string }
   | { type: "note"; body: string };
 
 export interface Item {
@@ -87,7 +87,6 @@ export interface ImportSummary {
   imported: number;
   skipped_duplicate: number;
   skipped_invalid: number;
-  notes_dropped: number;
 }
 
 export const api = {
@@ -220,10 +219,12 @@ export function diffFields(a: Item | null, b: Item | null): string[] {
     if (ka.password !== kb.password) changed.push("密码");
     if (ka.url !== kb.url) changed.push("网址");
     if ((ka.totp ?? "") !== (kb.totp ?? "")) changed.push("TOTP");
+    if ((ka.notes ?? "") !== (kb.notes ?? "")) changed.push("备注");
   } else if (ka.type === "api_key" && kb.type === "api_key") {
     if (ka.key_name !== kb.key_name) changed.push("Key 名称");
     if (ka.secret !== kb.secret) changed.push("Secret");
     if (ka.url !== kb.url) changed.push("网址");
+    if ((ka.notes ?? "") !== (kb.notes ?? "")) changed.push("备注");
   } else if (ka.type === "note" && kb.type === "note") {
     if (ka.body !== kb.body) changed.push("内容");
   } else {
