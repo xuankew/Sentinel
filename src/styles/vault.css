@@ -64,15 +64,32 @@
   width: 100%;
   text-align: left;
   font-family: var(--sans);
+  position: relative;
 }
 .nav-item:hover {
   background: var(--panel);
   color: var(--text);
 }
+/* 选中态左侧强调条：从中心纵向展开，切换视图/类型/标签时长出 */
+.nav-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  transform: translateY(-50%);
+  transition: height 0.18s ease;
+}
 .nav-item.active {
   background: var(--panel-2);
   color: var(--text);
   font-weight: 600;
+}
+.nav-item.active::before {
+  height: 58%;
 }
 .nav-item.active .nic {
   color: var(--accent);
@@ -486,6 +503,7 @@
   align-items: center;
   justify-content: center;
   z-index: 50;
+  animation: sent-fade 0.18s ease;
 }
 .modal {
   width: 460px;
@@ -1089,4 +1107,22 @@ textarea.input {
   white-space: nowrap;
   color: var(--text-faint);
   text-align: right;
+}
+
+/* 遮罩淡入，与 .modal 的 rise 配对，消除弹层出现时的割裂感 */
+@keyframes sent-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 无障碍：系统开启「减弱动态效果」时，去掉入场动画与过渡 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
