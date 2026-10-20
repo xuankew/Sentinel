@@ -34,6 +34,7 @@ pub fn run() {
             commands::copy_secret,
             commands::generate_totp,
             commands::get_sync_config,
+            commands::get_sync_history,
             commands::save_sync_config,
             commands::test_sync_connection,
             commands::sync_now,

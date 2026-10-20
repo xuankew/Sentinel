@@ -18,6 +18,7 @@ const SYNC_CONFIG_FILE: &str = "sync.json";
 const BASE_FILE: &str = "base.sentinel";
 const SETTINGS_FILE: &str = "settings.json";
 const METADATA_FILE: &str = "metadata.json";
+const SYNC_HISTORY_FILE: &str = "sync_history.json";
 const DEFAULT_CLIPBOARD_CLEAR_SECS: u64 = 30;
 
 fn vault_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -48,6 +49,12 @@ fn metadata_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir.join(METADATA_FILE))
+}
+
+fn sync_history_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join(SYNC_HISTORY_FILE))
 }
 
 /// 本地明文元数据。恢复提示按 PRD 明文存本地（只是给主人看的提示，不是密钥），不加密、不上云。
@@ -479,6 +486,54 @@ fn record_sync_success(app: &AppHandle) -> Result<(), String> {
     std::fs::write(sync_config_path(app)?, json).map_err(|e| e.to_string())
 }
 
+/// 一条同步历史。只存非敏感元数据（时间/状态/条目数/错误摘要），绝不含密文、密钥或 token。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SyncHistoryEntry {
+    /// unix 秒。
+    pub at: i64,
+    /// synced | up_to_date | conflict | error
+    pub status: String,
+    /// 合并后的条目总数；非 synced 状态为 0。
+    pub total: usize,
+    /// 补充说明：错误摘要或冲突项数。
+    pub detail: String,
+}
+
+/// 历史保留上限，防止无限增长。
+const SYNC_HISTORY_CAP: usize = 50;
+
+fn load_sync_history(app: &AppHandle) -> Vec<SyncHistoryEntry> {
+    let Ok(p) = sync_history_path(app) else { return Vec::new() };
+    std::fs::read_to_string(&p)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// 追加一条历史（新在前）并裁剪到上限。写入失败静默忽略——历史只是辅助信息，绝不阻断同步主流程。
+fn record_sync_event(app: &AppHandle, status: &str, total: usize, detail: String) {
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let mut hist = load_sync_history(app);
+    hist.insert(
+        0,
+        SyncHistoryEntry { at, status: status.to_string(), total, detail },
+    );
+    hist.truncate(SYNC_HISTORY_CAP);
+    if let Ok(p) = sync_history_path(app) {
+        if let Ok(json) = serde_json::to_string_pretty(&hist) {
+            let _ = std::fs::write(p, json);
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_sync_history(app: AppHandle) -> Result<Vec<SyncHistoryEntry>, String> {
+    Ok(load_sync_history(&app))
+}
+
 #[tauri::command]
 pub fn get_sync_config(app: AppHandle) -> Result<SyncConfigView, String> {
     let mut cfg = load_sync_config(&app)?;
@@ -569,6 +624,7 @@ async fn finalize_sync(
     std::fs::write(vault_path(app)?, &bytes).map_err(|e| e.to_string())?;
     std::fs::write(base_path(app)?, &bytes).map_err(|e| e.to_string())?;
     record_sync_success(app)?;
+    record_sync_event(app, "synced", total, String::new());
     {
         let mut guard = state.session.lock().unwrap();
         if let Some(sess) = guard.as_mut() {
@@ -581,8 +637,19 @@ async fn finalize_sync(
 
 /// 手动同步：拉取远端密文 → 解密 → 三方合并 →（无冲突则）推送。
 /// 有冲突时暂存并返回冲突列表，等待 resolve_sync。
+/// 外层包装统一把失败写入同步历史；成功/冲突/无需同步在 inner 内埋点。
 #[tauri::command]
 pub async fn sync_now(app: AppHandle, state: State<'_, AppState>) -> Result<SyncResult, String> {
+    match sync_now_inner(&app, &state).await {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            record_sync_event(&app, "error", 0, e.clone());
+            Err(e)
+        }
+    }
+}
+
+async fn sync_now_inner(app: &AppHandle, state: &State<'_, AppState>) -> Result<SyncResult, String> {
     let (key, password, params, salt, ours) = {
         let guard = state.session.lock().unwrap();
         let sess = guard.as_ref().ok_or("保险库未解锁")?;
@@ -595,7 +662,7 @@ pub async fn sync_now(app: AppHandle, state: State<'_, AppState>) -> Result<Sync
         )
     };
 
-    let cfg = load_sync_config(&app)?;
+    let cfg = load_sync_config(app)?;
     if !cfg.is_complete() {
         return Err("尚未配置同步仓库".into());
     }
@@ -616,32 +683,35 @@ pub async fn sync_now(app: AppHandle, state: State<'_, AppState>) -> Result<Sync
         }
     };
 
-    let base = load_base(&app, &key);
+    let base = load_base(app, &key);
 
     // 远端已与本地一致 → 无需推送，但仍确保 base 快照对齐。
     if remote_sha.is_some() && merge::same_content(&theirs, &ours) {
         let data = VaultData { version: 1, items: ours };
         let bytes = vault::seal(&data, &key, &params, &salt)?;
-        std::fs::write(base_path(&app)?, &bytes).map_err(|e| e.to_string())?;
-        record_sync_success(&app)?;
+        std::fs::write(base_path(app)?, &bytes).map_err(|e| e.to_string())?;
+        record_sync_success(app)?;
+        record_sync_event(app, "up_to_date", 0, String::new());
         *state.pending_sync.lock().unwrap() = None;
         return Ok(SyncResult::UpToDate);
     }
 
     let outcome = merge::merge3(&base, &ours, &theirs);
     if !outcome.conflicts.is_empty() {
+        let n = outcome.conflicts.len();
         *state.pending_sync.lock().unwrap() = Some(PendingSync {
             merged: outcome.merged,
             conflicts: outcome.conflicts.clone(),
             remote_sha,
         });
+        record_sync_event(app, "conflict", 0, format!("{n} 项待裁决"));
         return Ok(SyncResult::Conflict { conflicts: outcome.conflicts });
     }
 
     let final_items = merge::apply_resolutions(outcome.merged, Vec::new(), &HashMap::new());
     finalize_sync(
-        &app,
-        &state,
+        app,
+        state,
         final_items,
         remote_sha,
         &cfg,
@@ -660,6 +730,20 @@ pub async fn resolve_sync(
     state: State<'_, AppState>,
     choices: HashMap<String, Side>,
 ) -> Result<SyncResult, String> {
+    match resolve_sync_inner(&app, &state, choices).await {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            record_sync_event(&app, "error", 0, e.clone());
+            Err(e)
+        }
+    }
+}
+
+async fn resolve_sync_inner(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    choices: HashMap<String, Side>,
+) -> Result<SyncResult, String> {
     let pending = state
         .pending_sync
         .lock()
@@ -673,13 +757,13 @@ pub async fn resolve_sync(
         (sess.key.clone(), sess.params, sess.salt)
     };
 
-    let cfg = load_sync_config(&app)?;
+    let cfg = load_sync_config(app)?;
     let token = sync::get_token_cached()?.ok_or("尚未配置 GitHub Token")?;
 
     let final_items = merge::apply_resolutions(pending.merged, pending.conflicts, &choices);
     finalize_sync(
-        &app,
-        &state,
+        app,
+        state,
         final_items,
         pending.remote_sha,
         &cfg,

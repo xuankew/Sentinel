@@ -1,5 +1,5 @@
 import { createSignal, onMount, Show, For } from "solid-js";
-import { api } from "../lib/api";
+import { api, SyncHistoryEntry } from "../lib/api";
 import { XIcon, SyncIcon, CheckIcon, WarnIcon } from "./icons";
 
 interface Props {
@@ -11,6 +11,31 @@ interface Props {
 type TestState = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; msg: string } | { kind: "err"; msg: string };
 
 const SYNC_INTERVALS = [0, 5, 15, 30, 60];
+
+// 历史条目状态的中文标签与语义色。
+function statusMeta(status: string): { label: string; cls: string } {
+  switch (status) {
+    case "synced":
+      return { label: "同步完成", cls: "ok" };
+    case "up_to_date":
+      return { label: "已是最新", cls: "dim" };
+    case "conflict":
+      return { label: "冲突待裁决", cls: "warn" };
+    case "error":
+      return { label: "失败", cls: "err" };
+    default:
+      return { label: status, cls: "dim" };
+  }
+}
+
+function fmtHistoryTime(ts: number): string {
+  const d = new Date(ts * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const now = new Date();
+  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  if (d.toDateString() === now.toDateString()) return `今天 ${hm}`;
+  return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
 
 export default function SyncSettings(props: Props) {
   const [owner, setOwner] = createSignal("");
@@ -24,6 +49,7 @@ export default function SyncSettings(props: Props) {
   const [syncing, setSyncing] = createSignal(false);
   const [test, setTest] = createSignal<TestState>({ kind: "idle" });
   const [error, setError] = createSignal("");
+  const [history, setHistory] = createSignal<SyncHistoryEntry[]>([]);
 
   onMount(async () => {
     try {
@@ -36,6 +62,12 @@ export default function SyncSettings(props: Props) {
       setAutoSync(c.auto_sync_minutes || 0);
     } catch (e) {
       setError(String(e));
+    }
+    // 历史加载失败不打扰主流程，静默留空。
+    try {
+      setHistory(await api.getSyncHistory());
+    } catch {
+      /* 忽略 */
     }
   });
 
@@ -187,6 +219,35 @@ export default function SyncSettings(props: Props) {
           <Show when={error()}>
             <div class="form-error">{error()}</div>
           </Show>
+
+          <div class="hist-group">
+            <div class="nav-label" style={{ padding: "0 0 6px" }}>同步历史</div>
+            <Show
+              when={history().length > 0}
+              fallback={<div class="hist-empty">暂无同步记录</div>}
+            >
+              <div class="hist-list">
+                <For each={history()}>
+                  {(h) => {
+                    const m = statusMeta(h.status);
+                    return (
+                      <div class="hist-row">
+                        <span class={`hist-dot ${m.cls}`} />
+                        <span class="hist-time">{fmtHistoryTime(h.at)}</span>
+                        <span class={`hist-status ${m.cls}`}>{m.label}</span>
+                        <Show when={h.status === "synced" && h.total > 0}>
+                          <span class="hist-total">共 {h.total} 条</span>
+                        </Show>
+                        <Show when={h.detail}>
+                          <span class="hist-detail" title={h.detail}>{h.detail}</span>
+                        </Show>
+                      </div>
+                    );
+                  }}
+                </For>
+              </div>
+            </Show>
+          </div>
         </div>
 
         <div class="modal-foot" style={{ "justify-content": "space-between" }}>

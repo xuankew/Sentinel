@@ -68,6 +68,18 @@ export type SyncResult =
   | { status: "synced"; total: number }
   | { status: "conflict"; conflicts: MergeConflict[] };
 
+/** 一条同步历史（只含非敏感元数据，新在前）。 */
+export interface SyncHistoryEntry {
+  /** unix 秒 */
+  at: number;
+  /** synced | up_to_date | conflict | error */
+  status: string;
+  /** 合并后条目总数；非 synced 为 0 */
+  total: number;
+  /** 错误摘要或冲突项数 */
+  detail: string;
+}
+
 // ---- 偏好设置（M4）----
 
 export type Accent = "teal" | "blue" | "violet" | "amber" | "rose" | "green";
@@ -109,6 +121,7 @@ export const api = {
   generateTotp: (secret: string) => invoke<TotpResult>("generate_totp", { secret }),
 
   getSyncConfig: () => invoke<SyncConfigView>("get_sync_config"),
+  getSyncHistory: () => invoke<SyncHistoryEntry[]>("get_sync_history"),
   saveSyncConfig: (input: SyncConfigInput) => invoke<void>("save_sync_config", { input }),
   testSyncConnection: () => invoke<string>("test_sync_connection"),
   syncNow: () => invoke<SyncResult>("sync_now"),
